@@ -28,7 +28,7 @@ When in doubt, stop and ask the user.
 
 Never run the following without explicit permission from the user:
 
-- `git push` (in any form, including `--force`)
+- `git push --force` (in any form)
 - Pushing directly to `dev` or `main`.
 - `git reset --hard`
 - `git rebase` on any branch that has been shared or merged
