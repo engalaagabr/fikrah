@@ -62,6 +62,7 @@ The AI and Backend owner is responsible for requirements discovery, API design a
 
 - Backend framework: FastAPI.
 - Data stores: PostgreSQL and Qdrant.
+- Redis is the broker for Backend-owned asynchronous AI processing jobs; PostgreSQL remains the source of truth for notes and processing state.
 - PostgreSQL is the source of truth for accounts, projects, notes, conversations, and knowledge connections.
 - Qdrant stores embeddings and the identifiers/metadata needed to retrieve matching notes.
 - MongoDB is not part of the current stack; the confirmed requirements do not call for a third database.

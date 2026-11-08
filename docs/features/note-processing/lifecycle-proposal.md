@@ -1,6 +1,6 @@
 # Note Processing Lifecycle Proposal
 
-**Status: Backend-owned durable asynchronous processing is approved. Worker technology, status delivery, and detailed API contracts remain open.**
+**Status: Backend-owned asynchronous processing with Redis as the job broker is approved. The worker library, Redis durability configuration, status delivery, and detailed API contracts remain open.**
 
 ## Confirmed Constraints
 
@@ -20,7 +20,7 @@
 
 | Approach | Lifecycle | Benefits | Costs and risks |
 |---|---|---|---|
-| Backend-owned asynchronous processing — **approved** | The API stores the note, starts a durable processing job, and returns its current state. The Backend owns processing and retry state; the mobile app reads status and results from the Backend. | Processing can continue if the app closes; the Backend owns durable state; the mobile app does not wait on a long AI request. | Requires durable job state and a worker. The API needs a status contract, and mobile needs a way to learn about completion. |
+| Backend-owned asynchronous processing with Redis — **approved** | The API stores the note and enqueues processing through Redis. A Backend worker processes jobs; PostgreSQL remains the source of truth for note and processing state. | Processing can continue if the app closes; the Backend owns durable state; the mobile app does not wait on a long AI request. | Requires a worker and deliberate Redis persistence/retry configuration. The API needs a status contract, and mobile needs a way to learn about completion. |
 | Mobile-orchestrated processing — **not selected** | The mobile app calls an analysis endpoint and manages timeouts, retries, sequential execution, and resume behavior. | Matches the legacy `NoteProcessor` contract and needs less Backend job orchestration initially. | Work depends on app lifecycle and connectivity; mobile and Backend divide responsibility for failure and retry state. |
 
 ## Approved Lifecycle
@@ -32,11 +32,12 @@
 5. Mobile fetches the note and its processing state until the result is ready. Reopening the app does not restart completed work.
 6. A failed job leaves the note intact. The user can ask the Backend to retry processing.
 
-This decision does not select job technology, endpoint paths, response schemas, status delivery method, or note identifiers. Those depend on further architecture and mobile integration requirements.
+Redis is selected as the job broker, not as a source of truth for notes or job results. This decision does not select a worker library, Redis persistence/retry configuration, endpoint paths, response schemas, status delivery method, or note identifiers. Those depend on further architecture and mobile integration requirements.
 
 ## Questions Before API Design
 
-- Should the Backend worker use a PostgreSQL-backed job table, or should the system add a separate queue service?
+- Which Redis-backed worker library should the Backend use?
+- What Redis persistence and job retry settings are required to meet the durable-processing requirement?
 - Should the mobile app poll for state, or does the mobile application already provide a push/realtime mechanism?
 - What identifier and idempotency contract should be used? The existing integration document says mobile-generated UUID v4 IDs, but that has not been confirmed for the Backend API.
 - What should the mobile app display as the note title before AI finishes generating a missing title?
