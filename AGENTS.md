@@ -10,7 +10,9 @@ When in doubt, stop and ask the user.
   - The code works as specified.
   - Relevant tests are written and passing.
   - The related documentation is updated.
-- When a feature is complete, merge its branch into `dev` using `--no-ff`.
+- When a feature is complete, push its feature branch to `origin` and open a pull request targeting `dev`.
+- Merge completed pull requests into `dev` using a merge commit (the equivalent of `--no-ff`). Do not squash or rebase the pull request.
+- Never push directly to `dev` or `main`.
 - If a merge conflict occurs, stop and ask the user. Do not resolve it on your own.
 - If the Git repository or the `dev` branch does not exist, ask the user before initializing the repository or creating the branch.
 
@@ -19,13 +21,15 @@ When in doubt, stop and ask the user.
 - Break work into small, logical micro-commits. Each commit should do one thing and leave the project in a working state.
 - Use Conventional Commits for messages (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`).
 - Make the commits yourself on the feature branch; do not wait for approval between commits.
-- Never push. The user is the only person who pushes.
+- Push only completed feature branches to `origin` for their pull requests. Never force-push.
+- Before pushing to a public repository, verify that the commit author and committer identities will not attribute the work to the agent. Do not falsify authorship or impersonate the user to affect the contributor list. If the attribution cannot be verified or would identify the agent, stop and explain the issue before pushing.
 
 ## Forbidden Git Operations
 
 Never run the following without explicit permission from the user:
 
 - `git push` (in any form, including `--force`)
+- Pushing directly to `dev` or `main`.
 - `git reset --hard`
 - `git rebase` on any branch that has been shared or merged
 - Deleting branches
