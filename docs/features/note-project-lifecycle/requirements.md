@@ -4,13 +4,14 @@
 
 - Every note has a title.
 - A user-provided title is used when present.
-- If a user does not provide a title, the system supplies one.
+- If a user does not provide a title, AI generates one as part of note processing after the note is saved.
 - Deleting a project deletes every note associated with that project.
+- Deleting a project or a note deletes all knowledge connections associated with the deleted notes.
+- The built-in `General` project is protected from deletion.
 
 ## Decisions Still Needed
 
-- Whether the system-generated title comes from AI or a deterministic text rule, and when it becomes available.
-- Whether deleting a project also removes its notes' knowledge connections and Qdrant vectors.
-- Whether the built-in `General` project can be deleted.
+- Whether deleting a project or note also deletes associated Qdrant vectors.
+- How cleanup and recovery are handled across PostgreSQL and Qdrant.
 
 Do not create persistence models or deletion workflows that settle these open decisions implicitly.
