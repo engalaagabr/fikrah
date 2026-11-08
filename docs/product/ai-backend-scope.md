@@ -16,6 +16,10 @@ Users can manage notes, organize them into projects, improve and structure notes
 
 `General` is the default project. A note is associated with the currently selected project. Users may create another project and switch to/select it to organize notes there.
 
+Every note has a title. If the user does not provide one, the system supplies it. The title-generation method and timing are still to be confirmed.
+
+Deleting a project deletes all notes associated with that project. The cleanup of related knowledge connections and Qdrant vectors still needs to be specified.
+
 After a note is saved, AI processing starts automatically. The user can also request that a note be processed again.
 
 ## Content Processing Boundary
