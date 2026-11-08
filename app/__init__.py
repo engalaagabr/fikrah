@@ -1,0 +1,1 @@
+"""FIKRAH Backend application package."""
