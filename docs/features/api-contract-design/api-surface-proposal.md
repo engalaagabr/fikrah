@@ -43,14 +43,14 @@ Email verification and password recovery are confirmed first-release requirement
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
-| `POST /v1/projects/{project_id}/notes` | Save a note and start Backend-owned AI processing. | After the user saves text or locally extracted audio/PDF text. | Plain text, optional user title, and possibly an idempotency key for retry safety (open). No file. | Backend-generated note ID, selected project ID, current title if supplied, processing state, and creation/update times. |
+| `POST /v1/projects/{project_id}/notes` | Save a note and start Backend-owned AI processing. | After the user saves text or locally extracted audio/PDF text. | Plain text, optional user title, and an `Idempotency-Key` header. Mobile reuses the same key when retrying the same request after a timeout. No file. | Backend-generated note ID, selected project ID, current title if supplied, processing state, and creation/update times. |
 | `GET /v1/projects/{project_id}/notes` | List notes for a project. | When opening or refreshing a project. | Pagination and filters (open). | Notes with IDs, titles, processing states, and list-preview fields to be agreed. |
 | `GET /v1/notes/{note_id}` | Fetch the latest note and AI processing result, including its processing state for polling. | When opening a note and periodically until its processing state is terminal. | Note ID in the path. | Current text/title, processing state, concepts, cluster, refinement proposal if any, connections or their IDs, and timestamps. Exact shape is open. |
 | `PATCH /v1/notes/{note_id}` | Save user edits to note text or title and start a fresh processing job. | Whenever the user saves an edit to a note. | Changed text and/or title. | Updated note and new processing state. Results from earlier note versions must not overwrite this version. |
 | `DELETE /v1/notes/{note_id}` | Delete a note and its connections and associated vector. | When the user confirms note deletion. | Note ID in the path. | Deletion result; vector cleanup may finish asynchronously. |
 | `POST /v1/notes/{note_id}/processing-retries` | Retry AI processing while preserving the note. | When the user requests reprocessing or a previous attempt failed. | Note ID in the path; optional retry reason is not required by current product behavior. | Accepted retry state/job reference and current note processing state. |
 
-AI generates a title during processing only when the user did not supply one. The temporary title behavior while a note is pending is not settled. Mobile polls the note response for processing status; the exact state values and polling interval/backoff remain to be designed.
+AI generates a title during processing only when the user did not supply one. While title generation is pending, mobile can show `Processing…` as a UI-only placeholder; the value is not persisted as the note title. Mobile polls the note response for processing status; the exact state values and polling interval/backoff remain to be designed.
 
 ## Refinement proposals
 
@@ -92,7 +92,5 @@ Conversation ownership, note-context scoping, and chat history must remain isola
 ## Decisions needed before finalizing contracts
 
 1. **Email-link details:** What mobile app/deep-link URL should verification/reset emails open, and what token expiry/resend limits should apply?
-2. **Request idempotency:** What should the mobile client send so a retried note-creation request does not create duplicates after a network timeout?
-3. **Temporary title:** What should mobile display for a note with no user title until AI generates one?
 
 Do not implement these proposed routes or infer answers to these questions until the corresponding contracts are approved.

@@ -41,7 +41,7 @@ Redis is selected as the job broker, not as a source of truth for notes or job r
 
 - Which Redis-backed worker library should the Backend use?
 - What Redis persistence and job retry settings are required to meet the durable-processing requirement?
-- What request idempotency contract should be used for note creation if the mobile client retries after a network timeout?
-- What should the mobile app display as the note title before AI finishes generating a missing title?
+- The idempotency retention period and response behavior if a key is reused with a different request body.
+- The exact processing-state values and polling interval/backoff.
 
 When a note is saved again while an earlier job is still running, the earlier result must not overwrite the newer note revision. The exact revision/idempotency mechanism remains an implementation detail for the API and persistence design.
