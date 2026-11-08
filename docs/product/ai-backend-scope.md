@@ -65,7 +65,8 @@ The AI and Backend owner is responsible for requirements discovery, API design a
 - PostgreSQL is the source of truth for accounts, projects, notes, conversations, and knowledge connections.
 - Qdrant stores embeddings and the identifiers/metadata needed to retrieve matching notes.
 - MongoDB is not part of the current stack; the confirmed requirements do not call for a third database.
-- The synchronization and recovery behavior between PostgreSQL and Qdrant remains to be designed.
+- Deletion is authoritative in PostgreSQL and records a durable Qdrant cleanup request in the same transaction; a worker retries Qdrant cleanup until successful. Reads must validate retrieved note identifiers against PostgreSQL during the eventual-consistency window.
+- Synchronization and recovery for non-deletion writes between PostgreSQL and Qdrant remain to be designed.
 
 ## Existing Integration Context
 
