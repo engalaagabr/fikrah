@@ -18,7 +18,7 @@ Users can manage notes, organize them into projects, improve and structure notes
 
 Every note has a title. If the user does not provide one, AI generates it as part of note processing after the note is saved.
 
-Deleting a project deletes all notes associated with that project. Deleting a project or note also deletes all knowledge connections associated with the deleted notes. Qdrant vector cleanup and cross-store recovery behavior still need to be specified.
+Deleting a project deletes all notes associated with that project. Deleting a project or note also deletes all knowledge connections and Qdrant embeddings associated with the deleted notes. Cross-store synchronization and recovery behavior still need to be specified.
 
 After a note is saved, AI processing starts automatically. The user can also request that a note be processed again.
 
