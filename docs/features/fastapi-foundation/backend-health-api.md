@@ -26,4 +26,4 @@ FastAPI's interactive API documentation is available at `/docs` while the local 
 
 ## Decisions Kept Open
 
-PostgreSQL and Qdrant have been selected for the project, but this foundation does not implement either store. Their responsibilities, along with the authentication provider, deployment platform, and AI provider, remain open for discussion.
+PostgreSQL and Qdrant have been selected for the project, but this foundation does not implement either store. The authentication provider, deployment platform, and AI provider remain open for discussion.
