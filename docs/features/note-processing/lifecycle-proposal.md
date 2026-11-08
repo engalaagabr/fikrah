@@ -1,10 +1,13 @@
 # Note Processing Lifecycle Proposal
 
-**Status: Backend-owned asynchronous processing with Redis as the job broker is approved. The worker library, Redis durability configuration, status delivery, and detailed API contracts remain open.**
+**Status: Backend-owned asynchronous processing with Redis as the job broker is approved. Polling for status, Backend-generated note IDs, and reprocessing after every note save/edit are confirmed. The worker library, Redis durability configuration, and detailed API contracts remain open.**
 
 ## Confirmed Constraints
 
 - Saving a note starts AI processing automatically.
+- Saving an edit to an existing note also starts AI processing automatically.
+- The Backend generates note IDs.
+- Mobile polls the Backend to read note processing state.
 - The user can request processing again.
 - AI generates a title when the user did not supply one.
 - Audio and PDF text extraction happens on mobile. The Backend receives text only.
@@ -25,19 +28,20 @@
 
 ## Approved Lifecycle
 
-1. Mobile submits note text, its selected project, and an optional user-provided title.
+1. Mobile submits note text, its selected project, and an optional user-provided title. The Backend generates the note ID.
 2. The API verifies that the user owns the project, persists the note, and starts a durable processing job.
 3. The API responds with the note and a processing state without waiting for AI completion.
 4. A Backend worker processes the saved text. It generates a title only when the user did not provide one, then stores the supported insights and any rewrite proposal.
-5. Mobile fetches the note and its processing state until the result is ready. Reopening the app does not restart completed work.
+5. Mobile polls the note and its processing state until the result is ready. Reopening the app does not restart completed work.
 6. A failed job leaves the note intact. The user can ask the Backend to retry processing.
 
-Redis is selected as the job broker, not as a source of truth for notes or job results. This decision does not select a worker library, Redis persistence/retry configuration, endpoint paths, response schemas, status delivery method, or note identifiers. Those depend on further architecture and mobile integration requirements.
+Redis is selected as the job broker, not as a source of truth for notes or job results. This decision does not select a worker library, Redis persistence/retry configuration, endpoint paths, response schemas, polling interval, processing-state values, or request idempotency contract. Those depend on further architecture and mobile integration requirements.
 
 ## Questions Before API Design
 
 - Which Redis-backed worker library should the Backend use?
 - What Redis persistence and job retry settings are required to meet the durable-processing requirement?
-- Should the mobile app poll for state, or does the mobile application already provide a push/realtime mechanism?
-- What identifier and idempotency contract should be used? The existing integration document says mobile-generated UUID v4 IDs, but that has not been confirmed for the Backend API.
+- What request idempotency contract should be used for note creation if the mobile client retries after a network timeout?
 - What should the mobile app display as the note title before AI finishes generating a missing title?
+
+When a note is saved again while an earlier job is still running, the earlier result must not overwrite the newer note revision. The exact revision/idempotency mechanism remains an implementation detail for the API and persistence design.

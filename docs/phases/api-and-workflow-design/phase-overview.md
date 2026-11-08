@@ -15,7 +15,7 @@ Define the mobile-to-Backend API surface for confirmed FIKRAH workflows before i
 
 - Final endpoint paths and request/response schemas.
 - Authentication token strategy and Google sign-in exchange details.
-- Realtime or polling behavior for processing status.
+- Exact processing-state values and the polling interval/backoff policy.
 - Product models, migrations, or implementation of the proposed routes.
 - AI provider, prompt, embedding, or retrieval implementation details.
 
