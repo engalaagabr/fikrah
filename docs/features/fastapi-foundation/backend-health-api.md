@@ -13,6 +13,13 @@ python -m uvicorn app.main:app --reload
 
 FastAPI's interactive API documentation is available at `/docs` while the local server is running.
 
+## Tests
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
 ## Endpoint Contract
 
 ### `GET /health`
