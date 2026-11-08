@@ -20,7 +20,7 @@
 | `POST /v1/auth/email-verifications/confirm` | Verify ownership of the account email. | When the user follows the verification link. | Single-use verification token. | Updated account verification status. |
 | `POST /v1/auth/email-verifications` | Send or resend an email-verification link. | After registration or when the user requests another verification email. | Email or authenticated account context; exact behavior is open. | Generic accepted response and, if useful, resend timing metadata. |
 | `POST /v1/auth/login` | Authenticate an existing email/password account. | At email/password sign-in. | Email and password. | Account identity, a 15-minute JWT access token, and a 30-day opaque refresh token. Unverified email accounts cannot sign in. |
-| `POST /v1/auth/google` | Authenticate or create an account using Google. | After the mobile Google sign-in flow obtains a Google ID token. | Google ID token from the mobile client; the Backend verifies it. | Account identity and the application's access and refresh tokens. |
+| `POST /v1/auth/google` | Authenticate or create an account using Google. | After the mobile Google sign-in flow obtains a Google ID token. | Google ID token from the mobile client; the Backend verifies it and automatically links a matching existing account only when Google's email is verified. | Account identity and the application's access and refresh tokens. |
 | `POST /v1/auth/password-reset-requests` | Start password recovery without disclosing whether an email has an account. | When a user requests password recovery. | Email address. | Generic accepted response; reset-link expiry and resend limits are open. |
 | `POST /v1/auth/password-reset-completions` | Set a new password after the user proves control of the recovery link. | When the user submits a new password from the recovery flow. | Single-use recovery token and new password. | Confirmation that the password was changed. |
 | `POST /v1/auth/refresh` | Renew an expired access credential without asking the user to sign in again. | When the mobile client receives an expired/near-expiry access credential. | Opaque refresh token. | New 15-minute JWT access token and a newly rotated 30-day opaque refresh token. The previous refresh token is revoked. |
@@ -91,9 +91,8 @@ Conversation ownership, note-context scoping, and chat history must remain isola
 
 ## Decisions needed before finalizing contracts
 
-1. **Google account linking:** If a Google ID token uses an email already registered with a password, should the accounts be linked automatically or only after the user signs in to the existing account?
-2. **Email delivery and links:** Which email delivery service should send verification/reset links, what app/web URL should links open, and what expiry/resend limits should apply?
-3. **Request idempotency:** What should the mobile client send so a retried note-creation request does not create duplicates after a network timeout?
-4. **Temporary title:** What should mobile display for a note with no user title until AI generates one?
+1. **Email-link details:** What mobile app/deep-link URL should verification/reset emails open, and what token expiry/resend limits should apply?
+2. **Request idempotency:** What should the mobile client send so a retried note-creation request does not create duplicates after a network timeout?
+3. **Temporary title:** What should mobile display for a note with no user title until AI generates one?
 
 Do not implement these proposed routes or infer answers to these questions until the corresponding contracts are approved.

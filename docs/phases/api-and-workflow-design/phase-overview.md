@@ -14,7 +14,7 @@ Define the mobile-to-Backend API surface for confirmed FIKRAH workflows before i
 ## Not Included Yet
 
 - Final endpoint paths and request/response schemas.
-- Exact account-linking, email delivery, and authentication endpoint behavior.
+- Email-link URL/expiry/resend behavior and the remaining authentication endpoint details.
 - Exact processing-state values and the polling interval/backoff policy.
 - Product models, migrations, or implementation of the proposed routes.
 - AI provider, prompt, embedding, or retrieval implementation details.

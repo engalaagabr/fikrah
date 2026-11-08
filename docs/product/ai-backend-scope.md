@@ -42,7 +42,7 @@ Every user has an independent account. A user must only have access to their own
 - Conversations.
 - Chat history.
 
-The initial sign-in methods are email and password, and Google sign-in. Email verification and password recovery are required in the first release, using email links; email/password users cannot sign in before verifying their address. For Google sign-in, the mobile application sends a Google ID token to the Backend for verification. The Backend issues a 15-minute JWT access token and a 30-day opaque refresh token, rotates refresh tokens, and supports revocation through PostgreSQL.
+The initial sign-in methods are email and password, and Google sign-in. Email verification and password recovery are required in the first release, using email links sent through configurable SMTP; email/password users cannot sign in before verifying their address. For Google sign-in, the mobile application sends a Google ID token to the Backend for verification. The Backend issues a 15-minute JWT access token and a 30-day opaque refresh token, rotates refresh tokens, and supports revocation through PostgreSQL. A verified Google email matching an existing account is linked to that account automatically.
 
 Authentication, user accounts, authorization, and enforcement of this data isolation are Backend responsibilities.
 
