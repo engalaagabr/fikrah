@@ -58,7 +58,10 @@ The AI and Backend owner is responsible for requirements discovery, API design a
 
 - Backend framework: FastAPI.
 - Data stores: PostgreSQL and Qdrant.
-- The exact division of responsibilities between PostgreSQL and Qdrant has not been finalized.
+- PostgreSQL is the source of truth for accounts, projects, notes, conversations, and knowledge connections.
+- Qdrant stores embeddings and the identifiers/metadata needed to retrieve matching notes.
+- MongoDB is not part of the current stack; the confirmed requirements do not call for a third database.
+- The synchronization and recovery behavior between PostgreSQL and Qdrant remains to be designed.
 
 ## Existing Integration Context
 
