@@ -57,7 +57,7 @@ AI generates a title during processing only when the user did not supply one. Th
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
 | `POST /v1/notes/{note_id}/refinement-regenerations` | Generate a new wording proposal after the user rejected the previous one or requests another version. | When the user asks for another rewrite. | Note ID; optionally the unchanged source-text version to prevent applying a stale result. | Accepted processing state and later a proposal in the note response. |
-| `POST /v1/notes/{note_id}/refinement-acceptance` | Apply the currently displayed proposal by replacing the note text permanently. | When the user accepts the proposal. | Proposal ID or note revision to prevent accepting a stale proposal (exact concurrency contract open). | Updated note text, cleared proposal, and processing state if acceptance triggers reprocessing (open). |
+| `POST /v1/notes/{note_id}/refinement-acceptance` | Apply the currently displayed proposal by replacing the note text permanently and starting processing for the new text. | When the user accepts the proposal. | Proposal ID or note revision to prevent accepting a stale proposal (exact concurrency contract open). | Updated note text, cleared proposal, and new processing state. |
 | `DELETE /v1/notes/{note_id}/refinement-proposal` | Reject and remove the displayed proposal. | When the user rejects it. | Note ID and optionally proposal ID/revision. | Updated note with the proposal removed. |
 
 The proposal must use the same language as the original note. A result produced for an older note revision must not overwrite newer user edits. Whether accepting a proposal automatically runs AI processing again is open.
@@ -75,16 +75,16 @@ The mobile app's ability to create, edit, or remove individual connections has n
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
-| `POST /v1/search` | Find relevant notes by meaning and context instead of exact keywords. | When the user submits a search query. | Query text, optional project ID (all user projects vs selected project is open), and pagination/filter options (open). | Matching note summaries, relevance scores if desired, and paging metadata. Results must be authorized against PostgreSQL so pending Qdrant deletion cannot expose deleted notes. |
+| `POST /v1/projects/{project_id}/search` | Find relevant notes in the selected project by meaning and context instead of exact keywords. | When the user submits a search query while a project is selected. | Project ID in the path, query text, and pagination/filter options (open). | Matching note summaries, relevance scores if desired, and paging metadata. Results must be authorized against PostgreSQL so pending Qdrant deletion cannot expose deleted notes. |
 
 ## Chat with project knowledge
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
 | `GET /v1/projects/{project_id}/conversations` | List a user's conversations in a project. | When opening the chat history for a project. | Project ID and pagination. | Conversation IDs, titles, and timestamps. |
-| `POST /v1/projects/{project_id}/conversations` | Start a conversation scoped to a project. | When the user starts a new chat. | Optional conversation title (generation behavior open). | Created conversation. |
+| `POST /v1/projects/{project_id}/conversations` | Start a conversation scoped to the selected project. | When the user starts a new chat. | Optional conversation title (generation behavior open). | Created project-scoped conversation. |
 | `GET /v1/conversations/{conversation_id}` | Load conversation history. | When opening a prior conversation. | Conversation ID and pagination/cursor. | Messages with roles, content, citations/source note IDs, and timestamps. |
-| `POST /v1/conversations/{conversation_id}/messages` | Ask a question and receive an answer grounded in the conversation's project notes. | When the user sends a chat message. | User message text. | Assistant response, source note references, and an explicit unsupported-answer outcome when project notes do not support an answer. Streaming vs one response is open. |
+| `POST /v1/conversations/{conversation_id}/messages` | Ask a question and receive an answer grounded in the conversation's project notes. | When the user sends a chat message. | User message text. | Complete assistant response in one response, source note references, and an explicit unsupported-answer outcome when project notes do not support an answer. |
 | `DELETE /v1/conversations/{conversation_id}` | Delete a conversation and its chat history. | When the user deletes a conversation. | Conversation ID. | Deletion result. |
 
 Conversation ownership, note-context scoping, and chat history must remain isolated per user. The assistant must clearly say when it cannot find a supported answer in the selected project's notes.
@@ -95,8 +95,5 @@ Conversation ownership, note-context scoping, and chat history must remain isola
 2. **Token details:** What access/refresh token format, lifetimes, refresh rotation, and revocation behavior should the app use?
 3. **Request idempotency:** What should the mobile client send so a retried note-creation request does not create duplicates after a network timeout?
 4. **Temporary title:** What should mobile display for a note with no user title until AI generates one?
-5. **Search scope:** Is semantic search limited to the selected project by default, or should it include all the user's projects?
-6. **Refinement acceptance:** Since accepting a proposal changes and saves the note text, should acceptance also start the automatic processing cycle?
-7. **Streaming:** Should chat return a complete response or stream tokens to mobile?
 
 Do not implement these proposed routes or infer answers to these questions until the corresponding contracts are approved.

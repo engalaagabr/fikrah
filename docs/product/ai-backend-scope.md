@@ -54,6 +54,8 @@ An AI refinement proposal must remain in the same language as the original note.
 
 For AI chat, answers must be grounded in notes from the selected project. If those notes do not contain enough evidence to answer, the assistant must clearly say that it could not find a supported answer there.
 
+Semantic search is scoped to the currently selected project. Chat returns a complete response in one response rather than streaming tokens. Accepting a refinement replaces the note text and starts AI processing for the newly saved text.
+
 The Backend layer is responsible for APIs, authentication, user accounts, data management and persistence, and communication between the mobile application and AI services.
 
 The AI and Backend owner is responsible for requirements discovery, API design and mobile integration contracts, AI capabilities and workflows, Backend functionality, data management, authentication and user isolation, and AI/Backend integration. This role does not include mobile application development or UI implementation.
