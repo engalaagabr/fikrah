@@ -14,11 +14,11 @@ The product experience is:
 
 Users can manage notes, organize them into projects, improve and structure notes with AI, discover relationships between notes, search by meaning, and ask questions about their knowledge through AI chat.
 
-`General` is the default project. A note is associated with the currently selected project. Users may create another project and switch to/select it to organize notes there.
+`General` is the default project and is protected from deletion. A note is associated with the currently selected project. Users may create another project and switch to/select it to organize notes there.
 
-Every note has a title. If the user does not provide one, the system supplies it. The title-generation method and timing are still to be confirmed.
+Every note has a title. If the user does not provide one, AI generates it as part of note processing after the note is saved.
 
-Deleting a project deletes all notes associated with that project. The cleanup of related knowledge connections and Qdrant vectors still needs to be specified.
+Deleting a project deletes all notes associated with that project. Deleting a project or note also deletes all knowledge connections associated with the deleted notes. Qdrant vector cleanup and cross-store recovery behavior still need to be specified.
 
 After a note is saved, AI processing starts automatically. The user can also request that a note be processed again.
 
