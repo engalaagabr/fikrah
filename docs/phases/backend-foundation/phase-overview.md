@@ -8,7 +8,8 @@ Create the smallest runnable foundation for the FIKRAH Backend using the user-se
 
 - Establish the Python/FastAPI application entry point.
 - Provide a basic operational health endpoint.
-- Keep database, authentication-provider, and AI-provider decisions open until product and architecture requirements are discussed.
+- PostgreSQL and Qdrant have been selected; their data ownership and synchronization responsibilities remain open until discussed.
+- Keep authentication-provider and AI-provider decisions open until product and architecture requirements are discussed.
 
 ## Not Included Yet
 

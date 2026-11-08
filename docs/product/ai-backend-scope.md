@@ -54,6 +54,12 @@ The Backend layer is responsible for APIs, authentication, user accounts, data m
 
 The AI and Backend owner is responsible for requirements discovery, API design and mobile integration contracts, AI capabilities and workflows, Backend functionality, data management, authentication and user isolation, and AI/Backend integration. This role does not include mobile application development or UI implementation.
 
+## Selected Technologies
+
+- Backend framework: FastAPI.
+- Data stores: PostgreSQL and Qdrant.
+- The exact division of responsibilities between PostgreSQL and Qdrant has not been finalized.
+
 ## Existing Integration Context
 
 The repository's `backend-integration.md` describes existing mobile-facing abstractions and behavior. AI note refinement is represented as a proposal, not an automatic replacement; proposals are surfaced only if the user has not edited the note while AI processing is in progress. When the user accepts a proposal, it permanently replaces the note's current text; the previous text is not retained. When the user rejects a proposal, it disappears, and the user may request another wording. The same document specifies project-scoped note context for AI analysis and questions, and connections between notes in the same project. The built-in `General` project and user-selected project model align with this project-scoped context; the mobile application supplies the notes of the selected project to AI operations.
