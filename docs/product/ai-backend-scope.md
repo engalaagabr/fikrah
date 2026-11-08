@@ -20,7 +20,7 @@ Every note has a title. If the user does not provide one, AI generates it as par
 
 Deleting a project deletes all notes associated with that project. Deleting a project or note also deletes all knowledge connections and Qdrant embeddings associated with the deleted notes. Cross-store synchronization and recovery behavior still need to be specified.
 
-After a note is saved, AI processing starts automatically. The user can also request that a note be processed again.
+After a note is saved, the Backend starts durable asynchronous AI processing. Processing continues independently of the mobile app lifecycle. If processing fails, the note is preserved and the user can request a retry. The exact status-delivery API is still to be designed.
 
 ## Content Processing Boundary
 
@@ -70,7 +70,9 @@ The AI and Backend owner is responsible for requirements discovery, API design a
 
 ## Existing Integration Context
 
-The repository's `backend-integration.md` describes existing mobile-facing abstractions and behavior. AI note refinement is represented as a proposal, not an automatic replacement; proposals are surfaced only if the user has not edited the note while AI processing is in progress. When the user accepts a proposal, it permanently replaces the note's current text; the previous text is not retained. When the user rejects a proposal, it disappears, and the user may request another wording. The same document specifies project-scoped note context for AI analysis and questions, and connections between notes in the same project. The built-in `General` project and user-selected project model align with this project-scoped context; the mobile application supplies the notes of the selected project to AI operations.
+The repository's `backend-integration.md` describes existing mobile-facing abstractions and behavior. AI note refinement is represented as a proposal, not an automatic replacement; proposals are surfaced only if the user has not edited the note while AI processing is in progress. When the user accepts a proposal, it permanently replaces the note's current text; the previous text is not retained. When the user rejects a proposal, it disappears, and the user may request another wording. The same document specifies project-scoped note context for AI analysis and questions, and connections between notes in the same project. The built-in `General` project and user-selected project model align with this project-scoped context.
+
+The existing integration document assigns processing, timeout handling, retry state, and resume-after-reopen behavior to the mobile `NoteProcessor`. That lifecycle is superseded by the confirmed Backend-owned durable asynchronous processing model. How mobile learns about completion remains open.
 
 Some details in the existing integration document conflict with confirmed requirements above: it assigns voice/PDF extraction to the AI service and describes an attachment uploader. The confirmed requirements are that extraction happens locally on mobile, original PDFs remain on-device, and Backend and AI services receive and process text only. The old server-side extraction and file-upload descriptions are superseded and need review before implementation.
 
