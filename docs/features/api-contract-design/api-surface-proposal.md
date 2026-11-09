@@ -1,6 +1,6 @@
 # Mobile API Surface and Remaining Proposals
 
-**Status: Partial.** Authentication, project management, and the initial note lifecycle contract are implemented. The AI provider and worker architecture is documented in `docs/features/note-processing/ai-provider-factory.md`. Refinement actions, knowledge connections, search, graph, and chat routes remain proposals.
+**Status: Partial.** Authentication, project management, note processing, note refinement, and the approved project-scoped semantic search contract are implemented. The AI provider and worker architecture is documented in `docs/features/note-processing/ai-provider-factory.md`. Knowledge connections, graph, and chat routes remain proposals.
 
 ## Contract-wide rules
 
@@ -68,7 +68,7 @@ The mobile app's ability to create, edit, or remove individual connections has n
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
-| `POST /v1/projects/{project_id}/search` | Find relevant notes in the selected project by meaning and context instead of exact keywords. | When the user submits a search query while a project is selected. | Project ID in the path, query text, and pagination/filter options (open). | Matching note summaries, relevance scores if desired, and paging metadata. Results must be authorized against PostgreSQL so pending Qdrant deletion cannot expose deleted notes. |
+| `POST /v1/projects/{project_id}/search` | Find relevant notes in the selected project by meaning and context instead of exact keywords. | When the user submits a search query while a project is selected. | Project ID in the path, non-blank query text (max 4,000 characters), and optional `limit` (default 10, range 1–50). | Ordered matching notes with ID, title, content, relevance score, and update timestamp; empty array when no current completed vectors match. PostgreSQL validates user/project ownership, completion, and indexed revision before returning any result. |
 
 ## Chat with project knowledge
 
@@ -84,4 +84,4 @@ Conversation ownership, note-context scoping, and chat history must remain isola
 
 ## Decisions needed before finalizing contracts
 
-Queue recovery settings and the search, knowledge graph, and chat API schemas remain open in their related feature documents. Do not implement those proposed routes until their corresponding contracts are approved.
+Queue recovery settings and the knowledge graph and chat API schemas remain open in their related feature documents. Those proposed routes are not approved for implementation yet.
