@@ -1,6 +1,6 @@
 # Mobile API Surface and Remaining Proposals
 
-**Status: Partial.** Authentication and project management are implemented. The notes and processing routes below are approved and implemented in part; their persisted data contract is documented in `docs/features/note-management/overview.md`. Refinement, knowledge, search, graph, and chat routes remain proposals.
+**Status: Partial.** Authentication, project management, and the initial note lifecycle contract are implemented. The AI provider and worker architecture is documented in `docs/features/note-processing/ai-provider-factory.md`. Refinement actions, knowledge connections, search, graph, and chat routes remain proposals.
 
 ## Contract-wide rules
 
@@ -32,13 +32,13 @@ The user approved the project routes below for implementation. The rest of this 
 
 ## Notes and processing — Contract Accepted
 
-The user approved the routes and initial processing states below. List pagination is deferred. The current response contains core note fields; AI-generated analysis fields will be added with their corresponding AI feature contracts.
+The user approved the routes and initial processing states below. List pagination is deferred. Note responses also contain `concepts` and an optional `refinement_proposal` after processing completes.
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
 | `POST /v1/projects/{project_id}/notes` | Save a note and enqueue Backend-owned AI processing. | After the user saves text or locally extracted audio/PDF text. | Plain text, optional user title, and an `Idempotency-Key` header (1–128 characters). Reuse the same key for retries of the same capture. No file. | `201` with Backend-generated note ID, project ID, optional title, text, revision, `queued` state, and timestamps. Reusing a key with a different request returns `409`; replaying a creation whose note has since been deleted returns `410`. |
 | `GET /v1/projects/{project_id}/notes` | List notes for a project. | When opening or refreshing a project. | Project ID in the path; no pagination initially. | Full note records ordered by most recently updated. |
-| `GET /v1/notes/{note_id}` | Fetch the latest note and its processing state for polling. | When opening a note and periodically until its processing state is terminal. | Note ID in the path. | Current text/title, revision, state (`queued`, `processing`, `completed`, `failed`), and timestamps. AI analysis fields will be defined with their features. |
+| `GET /v1/notes/{note_id}` | Fetch the latest note and its processing state for polling. | When opening a note and periodically until its processing state is terminal. | Note ID in the path. | Current text/title, revision, concepts, optional refinement proposal, state (`queued`, `processing`, `completed`, `failed`), and timestamps. |
 | `PATCH /v1/notes/{note_id}` | Save user edits and enqueue processing for the new revision. | Whenever the user saves a note edit. | Changed text and/or title; at least one field. | Updated note and `queued` state. Old revision results must not overwrite the current revision. |
 | `DELETE /v1/notes/{note_id}` | Delete a note and its connections and associated vector. | When the user confirms note deletion. | Note ID in the path. | Deletion result; vector cleanup may finish asynchronously. |
 | `POST /v1/notes/{note_id}/processing-retries` | Retry AI processing while preserving the note. | When the user requests reprocessing or a previous attempt failed. | Note ID in the path; no retry reason. | `202` with the current note and `queued` state. |

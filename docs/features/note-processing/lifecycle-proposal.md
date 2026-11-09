@@ -1,6 +1,6 @@
 # Note Processing Lifecycle Proposal
 
-**Status: Backend-owned asynchronous processing with Redis and Celery is approved. Polling, Backend-generated note IDs, reprocessing after every note save/edit, core note routes, and initial processing state values are confirmed. AI provider choice, polling interval/backoff guidance, and operational queue settings remain open.**
+**Status: Backend-owned asynchronous processing with Redis and Celery is approved. Polling, Backend-generated note IDs, reprocessing after every note save/edit, core note routes, and initial processing state values are confirmed. DeepSeek and Gemini are selectable text providers; Gemini is the fixed embedding provider. Polling interval/backoff guidance and operational queue settings remain open.**
 
 ## Confirmed Constraints
 
@@ -37,9 +37,10 @@
 
 Redis is the job broker, not a source of truth for notes or job results. Celery is the selected worker library. PostgreSQL holds durable processing intents and current note state; tasks carry only IDs. Retry limits, Redis persistence, and polling interval/backoff remain deployment/mobile integration details.
 
+The first worker delivers title generation, a rewrite proposal, up to eight concepts, and a Gemini embedding. Project clusters, explicit knowledge links, search, and graph retrieval remain subsequent features.
+
 ## Questions Before API Design
 
-- Which AI provider and model should process note text?
 - What Redis persistence, retry limits, and worker capacity are required for the deployment?
 - How long should mobile retain an idempotency key between retries? The Backend currently retains keys persistently.
 - What polling interval/backoff should mobile use?
