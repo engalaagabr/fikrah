@@ -2,7 +2,7 @@
 
 ## Approved Providers
 
-The user requested DeepSeek and Gemini as selectable text-generation providers behind one factory, then selected OpenRouter with `deepseek/deepseek-v4.1-flash` as the configured text model. The API uses `AI_TEXT_PROVIDER=deepseek`, `gemini`, or `openrouter`; `AIProviderFactory` builds the configured adapter. The provider and model are selected by deployment configuration, not by mobile requests.
+DeepSeek, Gemini, and OpenRouter text-generation adapters share the `AIProviderFactory` composition component in `app/infrastructure/ai/factory.py`. The local environment selects OpenRouter with `deepseek/deepseek-v4.1-flash`; deployments may select `deepseek`, `gemini`, or `openrouter` through `AI_TEXT_PROVIDER`. Provider and model are selected by deployment configuration, not by mobile requests.
 
 Gemini is the embedding provider for every deployment. DeepSeek's current API documentation exposes text/chat model APIs but no embeddings API; Gemini provides text embeddings. Using one embedding model keeps all note vectors in a compatible embedding space when the text-generation provider changes. The default Gemini embedding model is `gemini-embedding-001` with 768 dimensions, which is one of Google's recommended output sizes.
 

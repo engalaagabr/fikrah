@@ -33,4 +33,4 @@ python -m pytest
 
 ## Decisions Kept Open
 
-PostgreSQL and Qdrant have been selected for the project, but this foundation does not implement either store. The authentication provider, deployment platform, and AI provider remain open for discussion.
+This document records the original health-endpoint foundation. PostgreSQL, Qdrant, authentication, and AI provider integrations have since been implemented; refer to the current feature and architecture documentation for their status.

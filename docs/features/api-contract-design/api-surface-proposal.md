@@ -1,6 +1,6 @@
-# Mobile API Surface and Remaining Proposals
+# Mobile API Surface
 
-**Status: Partial.** Authentication, project management, note processing, note refinement, project-scoped semantic search, and project knowledge chat are implemented. The AI provider and worker architecture is documented in `docs/features/note-processing/ai-provider-factory.md`. Knowledge connections and graph routes remain proposals until their feature PR is merged.
+**Status: Implemented.** This document records the current mobile-facing API contract for authentication, projects, notes, processing, refinement, knowledge connections, graph retrieval, semantic search, and project chat. The modular architecture is documented in [`docs/architecture/layered-modular-architecture.md`](../../architecture/layered-modular-architecture.md).
 
 ## Contract-wide rules
 
@@ -10,7 +10,7 @@
 - Project-scoped operations verify that the selected project belongs to the authenticated user. `General` is the default project and cannot be deleted.
 - Deleting a project removes its notes; deleting a note or project also removes associated knowledge links and schedules durable Qdrant cleanup.
 - Suggested refinement text is a proposal. Accepting replaces the current note text permanently; rejecting removes the proposal. A user can request another proposal.
-- Responses should use stable resource IDs and explicit processing state. Exact ID generation, error format, pagination, and timestamp conventions remain open.
+- Responses use backend-generated stable resource IDs and explicit processing state. Lists are unpaginated in the initial version; errors use FastAPI's standard `detail` response and timestamps are UTC.
 
 ## Authentication and account — Implemented
 
@@ -18,9 +18,9 @@ The authoritative paths, request/response schemas, and mobile workflow are docum
 
 Account deletion, concurrent-session behavior, and profile editing remain out of scope.
 
-## Projects — Contract Accepted
+## Projects — Implemented
 
-The user approved the project routes below for implementation. The rest of this file remains a proposal until approved separately.
+Project operations are implemented with per-user ownership checks. `General` is protected from deletion.
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
@@ -28,11 +28,11 @@ The user approved the project routes below for implementation. The rest of this 
 | `POST /v1/projects` | Create a project so the user can organize notes outside `General`. | When the user creates a project. | Project name. | Created project. |
 | `GET /v1/projects/{project_id}` | Retrieve project details for a project view. | When opening or refreshing a project. | Project ID in the path. | Project details and any agreed summary metadata. |
 | `PATCH /v1/projects/{project_id}` | Rename a project. | When the user saves a project-name edit. | Updated project name. | Updated project. |
-| `DELETE /v1/projects/{project_id}` | Delete a project and its notes, links, and associated vectors. | When the user confirms project deletion. | Project ID in the path. | Deletion result. The response's treatment of asynchronous vector cleanup is undecided. The protected `General` project must be rejected. |
+| `DELETE /v1/projects/{project_id}` | Delete a project and its notes, links, and associated vectors. | When the user confirms project deletion. | Project ID in the path. | `204`; vector cleanup is queued durably. The protected `General` project is rejected. |
 
-## Notes and processing — Contract Accepted
+## Notes and processing — Implemented
 
-The user approved the routes and initial processing states below. List pagination is deferred. Note responses also contain `concepts`, an optional `refinement_proposal`, and `processing_generation` for safe processing/proposal actions.
+List pagination is deferred. Note responses also contain `concepts`, an optional `refinement_proposal`, and `processing_generation` for safe processing/proposal actions.
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
@@ -82,6 +82,6 @@ Connections are generated after processing when at least one normalized concept 
 
 Conversation ownership, note-context scoping, and chat history are isolated per user. Retrieval uses up to eight current, completed note vectors from the selected project, verified against PostgreSQL. The latest twelve messages provide follow-up context but are not evidence. Answers use the same language as the question and do not stream. See [`docs/features/project-knowledge-chat/overview.md`](../project-knowledge-chat/overview.md).
 
-## Decisions needed before finalizing contracts
+## Deferred product decisions
 
-Queue recovery settings and the knowledge connection and graph contracts remain open in their related feature documents. Those proposed routes are not approved for implementation yet.
+Editing generated proposal text before accepting it, language-specific handling for mixed-language chats, list pagination, and production deployment capacity are not part of the initial contract. Current queue recovery behavior is documented in [`docs/features/celery-recovery-config/overview.md`](../celery-recovery-config/overview.md).
