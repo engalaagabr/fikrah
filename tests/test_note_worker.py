@@ -1,13 +1,19 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.ai.providers import NoteAnalysis
-from app.models import Note, NoteConnection, NoteProcessingJob, Project, User, VectorCleanupRequest
+from app.ai.contracts import NoteAnalysis
+from app.models import (
+    Note,
+    NoteConnection,
+    NoteProcessingJob,
+    Project,
+    User,
+    VectorCleanupRequest,
+)
 from app.models.base import Base
 from app.worker.tasks import process_note_job
 
@@ -85,11 +91,17 @@ def test_celery_job_analyzes_current_revision_and_upserts_embedding(
 
     database_path, job_id, note_id = note_job_db
     qdrant = FakeQdrant()
-    monkeypatch.setattr(tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel())
-    monkeypatch.setattr(tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel())
+    monkeypatch.setattr(
+        tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel()
+    )
+    monkeypatch.setattr(
+        tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel()
+    )
     monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
 
-    result = process_note_job.apply(args=[str(job_id)], task_id="worker-task-1", throw=True)
+    result = process_note_job.apply(
+        args=[str(job_id)], task_id="worker-task-1", throw=True
+    )
     assert result.successful()
     assert qdrant.closed
     assert len(qdrant.points) == 1
@@ -129,8 +141,12 @@ def test_stale_note_job_does_not_call_ai_or_overwrite_new_revision(
         def analyze_note(self, content: str) -> NoteAnalysis:
             raise AssertionError("stale note revision must not call AI")
 
-    monkeypatch.setattr(tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled())
-    result = process_note_job.apply(args=[str(job_id)], task_id="worker-task-2", throw=True)
+    monkeypatch.setattr(
+        tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled()
+    )
+    result = process_note_job.apply(
+        args=[str(job_id)], task_id="worker-task-2", throw=True
+    )
     assert result.successful()
 
     engine = create_engine(f"sqlite:///{database_path}")
@@ -169,7 +185,10 @@ def test_note_processing_links_shared_concepts_only_with_completed_project_notes
             concepts=["knowledge"],
             processing_status="processing",
         )
-        other_user = User(email="other-worker@example.com", email_verified_at=datetime.now(timezone.utc))
+        other_user = User(
+            email="other-worker@example.com",
+            email_verified_at=datetime.now(timezone.utc),
+        )
         session.add_all([same_project, processing, other_user])
         session.flush()
         foreign = Note(
@@ -194,11 +213,17 @@ def test_note_processing_links_shared_concepts_only_with_completed_project_notes
         same_project_id = same_project.id
 
     qdrant = FakeQdrant()
-    monkeypatch.setattr(tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel())
-    monkeypatch.setattr(tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel())
+    monkeypatch.setattr(
+        tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel()
+    )
+    monkeypatch.setattr(
+        tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel()
+    )
     monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
 
-    result = process_note_job.apply(args=[str(job_id)], task_id="worker-task-links", throw=True)
+    result = process_note_job.apply(
+        args=[str(job_id)], task_id="worker-task-links", throw=True
+    )
 
     assert result.successful()
     with Session(engine) as session:
@@ -252,8 +277,12 @@ def test_stale_processing_generation_does_not_overwrite_new_refinement_request(
         def analyze_note(self, content: str) -> NoteAnalysis:
             raise AssertionError("stale processing generation must not call AI")
 
-    monkeypatch.setattr(tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled())
-    result = process_note_job.apply(args=[str(job_id)], task_id="worker-task-old-generation", throw=True)
+    monkeypatch.setattr(
+        tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled()
+    )
+    result = process_note_job.apply(
+        args=[str(job_id)], task_id="worker-task-old-generation", throw=True
+    )
     assert result.successful()
 
     engine = create_engine(f"sqlite:///{database_path}")
@@ -268,7 +297,9 @@ def test_stale_processing_generation_does_not_overwrite_new_refinement_request(
     engine.dispose()
 
 
-def test_dispatcher_publishes_durable_pending_note_job(note_job_db, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dispatcher_publishes_durable_pending_note_job(
+    note_job_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from app.worker import tasks
 
     database_path, job_id, _ = note_job_db
@@ -308,7 +339,9 @@ def test_vector_cleanup_worker_removes_qdrant_point_and_marks_request_complete(
 
     qdrant = FakeQdrant()
     monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
-    result = delete_note_vector.apply(args=[str(cleanup_id)], task_id="cleanup-task", throw=True)
+    result = delete_note_vector.apply(
+        args=[str(cleanup_id)], task_id="cleanup-task", throw=True
+    )
 
     assert result.successful()
     assert qdrant.deleted["collection_name"] == "notes"

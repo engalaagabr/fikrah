@@ -1,84 +1,60 @@
-"""CRUD endpoints for a user's projects."""
+"""HTTP presentation layer for project endpoints."""
 
-from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.routes import current_user
+from app.auth.dependencies import current_user
 from app.database import get_db_session
-from app.models import (
-    ChatConversation,
-    ChatMessage,
-    ChatMessageSource,
-    Note,
-    NoteConnection,
-    NoteProcessingJob,
-    Project,
-    User,
-    VectorCleanupRequest,
+from app.models import User
+from app.projects.schemas import ProjectInput, ProjectView
+from app.projects.service import (
+    GeneralProjectProtected,
+    ProjectNotFound,
+    ProjectService,
 )
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]
 AuthenticatedUser = Annotated[User, Depends(current_user)]
+project_service = ProjectService()
 
 
-class ProjectInput(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-
-    @field_validator("name")
-    @classmethod
-    def normalize_name(cls, value: str) -> str:
-        name = value.strip()
-        if not name:
-            raise ValueError("Project name cannot be blank")
-        return name
-
-
-class ProjectView(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    name: str
-    is_general: bool
-    created_at: datetime
-
-
-def _not_found() -> HTTPException:
-    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+def _translate_service_error(error: Exception) -> HTTPException:
+    if isinstance(error, ProjectNotFound):
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+    if isinstance(error, GeneralProjectProtected):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The General project cannot be deleted",
+        )
+    raise error
 
 
 @router.get("", response_model=list[ProjectView])
 async def list_projects(user: AuthenticatedUser, db: Db) -> list[ProjectView]:
-    projects = await db.scalars(
-        select(Project)
-        .where(Project.user_id == user.id)
-        .order_by(Project.is_general.desc(), Project.created_at, Project.id)
-    )
+    projects = await project_service.list_projects(db, user.id)
     return [ProjectView.model_validate(project) for project in projects]
 
 
 @router.post("", response_model=ProjectView, status_code=status.HTTP_201_CREATED)
-async def create_project(body: ProjectInput, user: AuthenticatedUser, db: Db) -> ProjectView:
-    project = Project(user_id=user.id, name=body.name, is_general=False)
-    db.add(project)
-    await db.commit()
-    await db.refresh(project)
+async def create_project(
+    body: ProjectInput, user: AuthenticatedUser, db: Db
+) -> ProjectView:
+    project = await project_service.create_project(db, user.id, body.name)
     return ProjectView.model_validate(project)
 
 
 @router.get("/{project_id}", response_model=ProjectView)
 async def get_project(project_id: UUID, user: AuthenticatedUser, db: Db) -> ProjectView:
-    project = await db.scalar(
-        select(Project).where(Project.id == project_id, Project.user_id == user.id)
-    )
-    if project is None:
-        raise _not_found()
+    try:
+        project = await project_service.get_project(db, user.id, project_id)
+    except ProjectNotFound as error:
+        raise _translate_service_error(error) from error
     return ProjectView.model_validate(project)
 
 
@@ -86,51 +62,19 @@ async def get_project(project_id: UUID, user: AuthenticatedUser, db: Db) -> Proj
 async def rename_project(
     project_id: UUID, body: ProjectInput, user: AuthenticatedUser, db: Db
 ) -> ProjectView:
-    project = await db.scalar(
-        select(Project).where(Project.id == project_id, Project.user_id == user.id)
-    )
-    if project is None:
-        raise _not_found()
-    project.name = body.name
-    await db.commit()
-    await db.refresh(project)
+    try:
+        project = await project_service.rename_project(
+            db, user.id, project_id, body.name
+        )
+    except ProjectNotFound as error:
+        raise _translate_service_error(error) from error
     return ProjectView.model_validate(project)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: UUID, user: AuthenticatedUser, db: Db) -> Response:
-    project = await db.scalar(
-        select(Project)
-        .where(Project.id == project_id, Project.user_id == user.id)
-        .with_for_update()
-    )
-    if project is None:
-        raise _not_found()
-    if project.is_general:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The General project cannot be deleted")
-    note_ids = list(await db.scalars(select(Note.id).where(Note.project_id == project.id)))
-    db.add_all(VectorCleanupRequest(note_id=note_id) for note_id in note_ids)
-    conversation_ids = select(ChatConversation.id).where(
-        ChatConversation.project_id == project.id
-    )
-    message_ids = select(ChatMessage.id).where(
-        ChatMessage.conversation_id.in_(conversation_ids)
-    )
-    await db.execute(
-        delete(ChatMessageSource).where(ChatMessageSource.message_id.in_(message_ids))
-    )
-    await db.execute(
-        delete(ChatMessage).where(ChatMessage.conversation_id.in_(conversation_ids))
-    )
-    await db.execute(delete(ChatConversation).where(ChatConversation.project_id == project.id))
-    if note_ids:
-        await db.execute(
-            delete(NoteConnection).where(
-                NoteConnection.source_note_id.in_(note_ids) | NoteConnection.target_note_id.in_(note_ids)
-            )
-        )
-        await db.execute(delete(NoteProcessingJob).where(NoteProcessingJob.note_id.in_(note_ids)))
-        await db.execute(delete(Note).where(Note.id.in_(note_ids)))
-    await db.delete(project)
-    await db.commit()
+    try:
+        await project_service.delete_project(db, user.id, project_id)
+    except (ProjectNotFound, GeneralProjectProtected) as error:
+        raise _translate_service_error(error) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)

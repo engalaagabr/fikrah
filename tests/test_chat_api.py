@@ -9,11 +9,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.ai.providers import ChatAnswer
+from app.ai.contracts import ChatAnswer
 from app.auth.security import create_access_token
 from app.database import get_db_session
 from app.main import app as fastapi_app
-from app.models import ChatConversation, ChatMessage, ChatMessageSource, Note, Project, User
+from app.models import (
+    ChatConversation,
+    ChatMessage,
+    ChatMessageSource,
+    Note,
+    Project,
+    User,
+)
 from app.models.base import Base
 
 
@@ -33,7 +40,9 @@ async def chat_api(
         str,
     ]
 ]:
-    monkeypatch.setenv("FIKRAH_JWT_SECRET", "chat-test-secret-that-is-at-least-32-characters")
+    monkeypatch.setenv(
+        "FIKRAH_JWT_SECRET", "chat-test-secret-that-is-at-least-32-characters"
+    )
     engine = create_async_engine(
         "sqlite+aiosqlite://",
         connect_args={"check_same_thread": False},
@@ -106,7 +115,6 @@ class FakeEmbeddingModel:
 async def test_chat_persists_messages_and_only_authorized_citations(
     chat_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.chat import routes
 
     client, sessions, _, project_id, _, note_id, private_note_id, token, _ = chat_api
 
@@ -125,14 +133,21 @@ async def test_chat_persists_messages_and_only_authorized_citations(
                     return ChatAnswer(
                         answer="You saved a reliable source note.",
                         supported=True,
-                        source_note_ids=[str(note_id), "00000000-0000-0000-0000-000000000001"],
+                        source_note_ids=[
+                            str(note_id),
+                            "00000000-0000-0000-0000-000000000001",
+                        ],
                     )
 
             return FakeTextModel()
 
-    monkeypatch.setattr(routes, "AIProviderFactory", Factory)
+    from app.chat import service as chat_service_module
+    from app.search import service as search_service_module
+
+    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
     monkeypatch.setattr(
-        routes,
+        search_service_module,
         "search_note_vectors",
         lambda *_args: [(note_id, 2, 0.92), (private_note_id, 1, 0.89)],
     )
@@ -165,10 +180,15 @@ async def test_chat_persists_messages_and_only_authorized_citations(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert detail.status_code == 200
-    assert [message["role"] for message in detail.json()["messages"]] == ["user", "assistant"]
+    assert [message["role"] for message in detail.json()["messages"]] == [
+        "user",
+        "assistant",
+    ]
     assert detail.json()["messages"][1]["sources"][0]["note_id"] == str(note_id)
     async with sessions() as session:
-        assert await session.scalar(select(ChatConversation.title)) == "What did I save?"
+        assert (
+            await session.scalar(select(ChatConversation.title)) == "What did I save?"
+        )
         assert len(list(await session.scalars(select(ChatMessageSource)))) == 1
 
 
@@ -176,7 +196,6 @@ async def test_chat_persists_messages_and_only_authorized_citations(
 async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
     chat_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.chat import routes
 
     client, _, _, project_id, _, _, _, token, _ = chat_api
 
@@ -198,8 +217,12 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
 
             return FakeTextModel()
 
-    monkeypatch.setattr(routes, "AIProviderFactory", Factory)
-    monkeypatch.setattr(routes, "search_note_vectors", lambda *_args: [])
+    from app.chat import service as chat_service_module
+    from app.search import service as search_service_module
+
+    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "search_note_vectors", lambda *_args: [])
     created = await client.post(
         f"/v1/projects/{project_id}/conversations",
         headers={"Authorization": f"Bearer {token}"},
@@ -221,7 +244,6 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
 async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generation(
     chat_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.chat import routes
 
     client, sessions, _, project_id, _, _, _, token, _ = chat_api
     created = await client.post(
@@ -249,9 +271,12 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
 
             return FakeTextModel()
 
-    original_run_in_threadpool = routes.run_in_threadpool
+    from app.chat import service as chat_service_module
+    from app.search import service as search_service_module
 
-    async def run_in_threadpool(function, *args):
+    original_to_thread = chat_service_module.asyncio.to_thread
+
+    async def run_in_thread(function, *args, **kwargs):
         nonlocal answer_call_seen
         if getattr(function, "__name__", "") == "answer_question":
             answer_call_seen = True
@@ -264,11 +289,12 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
                     )
                 )
                 await session.commit()
-        return await original_run_in_threadpool(function, *args)
+        return await original_to_thread(function, *args, **kwargs)
 
-    monkeypatch.setattr(routes, "AIProviderFactory", Factory)
-    monkeypatch.setattr(routes, "search_note_vectors", lambda *_args: [])
-    monkeypatch.setattr(routes, "run_in_threadpool", run_in_threadpool)
+    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "search_note_vectors", lambda *_args: [])
+    monkeypatch.setattr(chat_service_module.asyncio, "to_thread", run_in_thread)
     response = await client.post(
         f"/v1/conversations/{conversation_id}/messages",
         headers={"Authorization": f"Bearer {token}"},
@@ -279,7 +305,9 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
     async with sessions() as session:
         messages = list(
             await session.scalars(
-                select(ChatMessage).where(ChatMessage.conversation_id == conversation_id)
+                select(ChatMessage).where(
+                    ChatMessage.conversation_id == conversation_id
+                )
             )
         )
     assert [message.content for message in messages] == ["A concurrent message"]
@@ -287,9 +315,21 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
 
 @pytest.mark.asyncio
 async def test_chat_conversations_are_isolated_by_user_and_project(chat_api) -> None:
-    client, sessions, owner_id, project_id, other_project_id, _, _, token, other_token = chat_api
+    (
+        client,
+        sessions,
+        owner_id,
+        project_id,
+        other_project_id,
+        _,
+        _,
+        token,
+        other_token,
+    ) = chat_api
     async with sessions() as session:
-        conversation = ChatConversation(user_id=owner_id, project_id=project_id, title="Private")
+        conversation = ChatConversation(
+            user_id=owner_id, project_id=project_id, title="Private"
+        )
         session.add(conversation)
         await session.commit()
         conversation_id = conversation.id
@@ -317,7 +357,9 @@ async def test_deleting_note_removes_chat_citations(chat_api) -> None:
     from app.models import ChatMessage
 
     async with sessions() as session:
-        conversation = ChatConversation(user_id=owner_id, project_id=project_id, title="Sources")
+        conversation = ChatConversation(
+            user_id=owner_id, project_id=project_id, title="Sources"
+        )
         session.add(conversation)
         await session.flush()
         assistant = ChatMessage(
@@ -348,7 +390,9 @@ async def test_deleting_note_removes_chat_citations(chat_api) -> None:
 async def test_deleting_project_removes_its_conversations(chat_api) -> None:
     client, sessions, owner_id, project_id, _, _, _, token, _ = chat_api
     async with sessions() as session:
-        conversation = ChatConversation(user_id=owner_id, project_id=project_id, title="Project chat")
+        conversation = ChatConversation(
+            user_id=owner_id, project_id=project_id, title="Project chat"
+        )
         session.add(conversation)
         await session.commit()
         conversation_id = conversation.id

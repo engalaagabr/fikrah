@@ -23,6 +23,6 @@ environment variables already configured by the host process. This covers both
 
 - PostgreSQL, Redis, and Qdrant URLs point to local services by default.
 - `FIKRAH_JWT_SECRET` must be a private key of at least 32 characters.
-- DeepSeek and Gemini API keys are blank until supplied by the developer.
+- AI text generation defaults to OpenRouter when configured; DeepSeek and Gemini adapters are also available. Gemini is required for embeddings. Keep provider secrets in the ignored local `.env` file and use `.env.example` only for variable names and safe defaults.
 - Google OAuth and SMTP settings are optional until those flows are exercised.
 - Email action links must use an HTTPS URL accepted by the mobile application.

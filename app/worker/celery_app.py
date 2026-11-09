@@ -22,7 +22,9 @@ celery_app.conf.update(
     task_reject_on_worker_lost=False,
     task_publish_retry=True,
     broker_connection_retry_on_startup=True,
-    broker_transport_options={"visibility_timeout": settings.broker_visibility_timeout_seconds},
+    broker_transport_options={
+        "visibility_timeout": settings.broker_visibility_timeout_seconds
+    },
     worker_prefetch_multiplier=1,
     beat_schedule={
         "dispatch-durable-backend-jobs": {

@@ -1,5 +1,7 @@
 # Phase: Core Knowledge Management
 
+**Status: Complete.** Note, project, search, chat, and connection capabilities described here have been implemented.
+
 ## Goal
 
 Give signed-in users a project container for organizing their personal notes and make project ownership boundaries explicit in the API.
@@ -12,7 +14,7 @@ Give signed-in users a project container for organizing their personal notes and
 - Initial note analysis, including title generation, rewrite proposals, concepts, and Qdrant embeddings.
 - Durable Celery dispatch with configurable retry and stale-job recovery settings.
 - Project-scoped semantic search and chat over project notes.
-- Knowledge connections and graph retrieval remain separate features with their own contracts.
+- Knowledge connections and graph retrieval are implemented as separate feature modules with their own contracts.
 
 ## Completion Criteria
 

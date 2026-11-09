@@ -36,7 +36,7 @@ Deletes the conversation, all of its messages, and citation records. Deleting a 
 - Up to eight semantically relevant note vectors are considered. PostgreSQL must confirm that each note belongs to the authenticated user and selected project, is completed, and has the same revision as the indexed vector before the note content is sent to the text model.
 - The text model receives the current question, the latest 12 conversation messages, and authorized note content. Conversation history can clarify a follow-up question but is not evidence for factual claims.
 - Returned source IDs are checked against the authorized retrieval set. Invalid or out-of-scope IDs are never returned as citations.
-- The configured DeepSeek or Gemini text provider generates the answer. No token streaming is used.
+- The configured OpenRouter, DeepSeek, or Gemini text adapter generates the answer. The response is returned as one complete message, without token streaming.
 - AI or retrieval service failures return `503`; the question and assistant response are persisted together only after a complete AI response is available.
 
 ## Persistence

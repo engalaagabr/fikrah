@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from qdrant_client import models
 
-import app.search.service as search_service
+import app.infrastructure.vector_store.qdrant as search_service
 
 
 def test_qdrant_search_filters_by_user_and_project_and_returns_revision(
@@ -27,7 +27,9 @@ def test_qdrant_search_filters_by_user_and_project_and_returns_revision(
                     SimpleNamespace(
                         id=str(note_id), payload={"revision": 3}, score=0.91
                     ),
-                    SimpleNamespace(id="not-a-uuid", payload={"revision": 1}, score=0.2),
+                    SimpleNamespace(
+                        id="not-a-uuid", payload={"revision": 1}, score=0.2
+                    ),
                     SimpleNamespace(id=str(uuid4()), payload={}, score=0.1),
                 ]
             )
@@ -43,7 +45,10 @@ def test_qdrant_search_filters_by_user_and_project_and_returns_revision(
     assert matches == [(note_id, 3, pytest.approx(0.91))]
     search_filter = captured["query_filter"]
     assert isinstance(search_filter, models.Filter)
-    assert [condition.key for condition in search_filter.must] == ["user_id", "project_id"]
+    assert [condition.key for condition in search_filter.must] == [
+        "user_id",
+        "project_id",
+    ]
     assert [condition.match.value for condition in search_filter.must] == [
         str(user_id),
         str(project_id),
@@ -53,7 +58,9 @@ def test_qdrant_search_filters_by_user_and_project_and_returns_revision(
     assert captured["closed"] is True
 
 
-def test_qdrant_search_returns_empty_without_a_collection(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_qdrant_search_returns_empty_without_a_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FakeClient:
         def __init__(self, **kwargs: object) -> None:
             pass

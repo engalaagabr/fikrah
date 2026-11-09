@@ -71,16 +71,6 @@ The AI and Backend owner is responsible for requirements discovery, API design a
 - Deletion is authoritative in PostgreSQL and records a durable Qdrant cleanup request in the same transaction; a worker retries Qdrant cleanup until successful. Reads must validate retrieved note identifiers against PostgreSQL during the eventual-consistency window.
 - Synchronization and recovery for non-deletion writes between PostgreSQL and Qdrant remain to be designed.
 
-## Existing Integration Context
-
-The repository's `backend-integration.md` describes existing mobile-facing abstractions and behavior. AI note refinement is represented as a proposal, not an automatic replacement; proposals are surfaced only if the user has not edited the note while AI processing is in progress. When the user accepts a proposal, it permanently replaces the note's current text; the previous text is not retained. When the user rejects a proposal, it disappears, and the user may request another wording. The same document specifies project-scoped note context for AI analysis and questions, and connections between notes in the same project. The built-in `General` project and user-selected project model align with this project-scoped context.
-
-The existing integration document assigns processing, timeout handling, retry state, and resume-after-reopen behavior to the mobile `NoteProcessor`. That lifecycle is superseded by the confirmed Backend-owned durable asynchronous processing model. How mobile learns about completion remains open.
-
-Some details in the existing integration document conflict with confirmed requirements above: it assigns voice/PDF extraction to the AI service and describes an attachment uploader. The confirmed requirements are that extraction happens locally on mobile, original PDFs remain on-device, and Backend and AI services receive and process text only. The old server-side extraction and file-upload descriptions are superseded and need review before implementation.
-
-These existing integration details should be reviewed alongside the source code when it becomes available. The product workflow for editing a proposal before accepting or rejecting it remains unspecified.
-
 ## Discovery Still Needed
 
 Confirm these behaviors with the user before treating them as requirements or designing endpoints around them:
@@ -88,4 +78,7 @@ Confirm these behaviors with the user before treating them as requirements or de
 - How users edit a proposed refinement before accepting or rejecting it.
 - Which languages the application must understand and use for notes, transcriptions, and search.
 - Which language chat should use when the user's question and the relevant notes have different languages, or the project contains notes in multiple languages.
-- The detailed mobile-to-Backend workflows and endpoint requirements for each capability.
+
+## Implemented Backend Scope
+
+The initial API surface, authentication flows, project and note lifecycle, AI processing, semantic search, knowledge connections, graph retrieval, and project-scoped chat have been implemented. See [`docs/features/api-contract-design/api-surface-proposal.md`](../features/api-contract-design/api-surface-proposal.md) for endpoint behavior and [`docs/architecture/layered-modular-architecture.md`](../architecture/layered-modular-architecture.md) for module boundaries. Remaining product decisions above should be resolved before expanding language-specific behavior or adding manual editing of a generated proposal.

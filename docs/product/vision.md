@@ -42,7 +42,7 @@ Users can ask questions and receive contextual answers grounded in their notes a
 
 ## Core Experience
 
-**Capture → Understand → Organize → Connect → Discover**
+**Capture → Understand → Organize → Connect → Retrieve → Discover**
 
 ## Product Principles Captured So Far
 
@@ -51,8 +51,8 @@ Users can ask questions and receive contextual answers grounded in their notes a
 - Refinement should preserve the meaning of the user's original input.
 - Stored knowledge should become interconnected and discoverable, rather than remain a collection of isolated notes.
 - Answers in the conversational experience should be grounded in the user's own notes and documents.
-- AI-refined text is a proposal for the user, rather than an automatic replacement of the user's note. The existing integration notes also specify that a proposal is shown only if the user has not edited the note while AI processing was in progress; see [backend-integration.md](../../backend-integration.md).
+- AI-refined text is a proposal for the user, rather than an automatic replacement. Accepting permanently replaces the current note text and starts processing again; rejecting removes the proposal and leaves the note unchanged. Results for an older note revision are discarded.
 
 ## Open Product Questions
 
-Detailed open questions about note/project workflows, refinement approval, language support, and chat behavior are tracked in [ai-backend-scope.md](ai-backend-scope.md). Confirm their answers with the user before treating them as requirements.
+The implementation scope and remaining product decisions are tracked in [ai-backend-scope.md](ai-backend-scope.md). The backend API and module boundaries are documented in [the layered modular architecture](../architecture/layered-modular-architecture.md).
