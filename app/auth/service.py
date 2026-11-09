@@ -1,14 +1,14 @@
 """Authentication application workflows and account lifecycle use cases."""
 
+import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 
 import aiosmtplib
-from fastapi import HTTPException
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.errors import AuthServiceError
 from app.auth.schemas import (
     AuthTokens,
     Credentials,
@@ -36,10 +36,10 @@ from app.infrastructure.identity.google import (
 from app.models import EmailActionToken, EmailSendAttempt, Project, RefreshSession, User
 
 
-def _http_error(
+def _auth_error(
     code: int, message: str, *, headers: dict[str, str] | None = None
-) -> HTTPException:
-    return HTTPException(status_code=code, detail=message, headers=headers)
+) -> AuthServiceError:
+    return AuthServiceError(code, message, headers=headers)
 
 
 def _utc(value: datetime) -> datetime:
@@ -125,7 +125,7 @@ async def register(body: Credentials, db: AsyncSession) -> Message:
         if exists is None and await _send_limit_available(db, body.email):
             user = User(
                 email=body.email,
-                password_hash=await run_in_threadpool(hash_password, body.password),
+                password_hash=await asyncio.to_thread(hash_password, body.password),
             )
             db.add(user)
             await db.flush()
@@ -138,7 +138,7 @@ async def register(body: Credentials, db: AsyncSession) -> Message:
             await send_action_email(body.email, raw_token, "verify_email")
             await send_welcome_email(body.email)
         except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
-            raise _http_error(503, "Email delivery is temporarily unavailable") from exc
+            raise _auth_error(503, "Email delivery is temporarily unavailable") from exc
     return Message(
         message="If the address can be registered, a verification email will be sent."
     )
@@ -160,11 +160,11 @@ async def verify_email(body: TokenRequest, db: AsyncSession) -> Message:
             or action.used_at is not None
             or _utc(action.expires_at) <= now
         ):
-            raise _http_error(400, "The verification link is invalid or expired")
+            raise _auth_error(400, "The verification link is invalid or expired")
         action.used_at = now
         user = await db.get(User, action.user_id)
         if user is None:
-            raise _http_error(400, "The verification link is invalid or expired")
+            raise _auth_error(400, "The verification link is invalid or expired")
         user.email_verified_at = now
     return Message(message="Email verified")
 
@@ -187,23 +187,23 @@ async def resend_verification(body: EmailRequest, db: AsyncSession) -> Message:
         try:
             await send_action_email(body.email, raw_token, "verify_email")
         except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
-            raise _http_error(503, "Email delivery is temporarily unavailable") from exc
+            raise _auth_error(503, "Email delivery is temporarily unavailable") from exc
     return Message(message="If the address needs verification, an email will be sent.")
 
 
 async def login(body: Credentials, db: AsyncSession) -> AuthTokens:
     user = await db.scalar(select(User).where(User.email == body.email))
     if user is None or user.password_hash is None:
-        await run_in_threadpool(verify_password, body.password, DUMMY_PASSWORD_HASH)
-        raise _http_error(
+        await asyncio.to_thread(verify_password, body.password, DUMMY_PASSWORD_HASH)
+        raise _auth_error(
             401, "Invalid email or password", headers={"WWW-Authenticate": "Bearer"}
         )
-    if not await run_in_threadpool(verify_password, body.password, user.password_hash):
-        raise _http_error(
+    if not await asyncio.to_thread(verify_password, body.password, user.password_hash):
+        raise _auth_error(
             401, "Invalid email or password", headers={"WWW-Authenticate": "Bearer"}
         )
     if user.email_verified_at is None:
-        raise _http_error(403, "Verify your email before signing in")
+        raise _auth_error(403, "Verify your email before signing in")
     tokens = await _issue_session(db, user)
     await db.commit()
     return tokens
@@ -212,17 +212,17 @@ async def login(body: Credentials, db: AsyncSession) -> AuthTokens:
 async def google_login(body: GoogleLoginRequest, db: AsyncSession) -> AuthTokens:
     audience = os.getenv("GOOGLE_CLIENT_ID")
     if not audience:
-        raise _http_error(503, "Google sign-in is not configured")
+        raise _auth_error(503, "Google sign-in is not configured")
     try:
-        claims = await run_in_threadpool(
+        claims = await asyncio.to_thread(
             verify_google_id_token, body.id_token, audience
         )
     except InvalidGoogleToken:
-        raise _http_error(401, "Invalid Google ID token")
+        raise _auth_error(401, "Invalid Google ID token")
     email = str(claims.get("email", "")).strip().lower()
     subject = claims.get("sub")
     if not email or not subject or claims.get("email_verified") is not True:
-        raise _http_error(401, "Google account must have a verified email")
+        raise _auth_error(401, "Google account must have a verified email")
 
     created_user = False
     async with db.begin():
@@ -233,7 +233,7 @@ async def google_login(body: GoogleLoginRequest, db: AsyncSession) -> AuthTokens
             select(User).where(User.email == email).with_for_update()
         )
         if subject_user is not None and subject_user.email != email:
-            raise _http_error(
+            raise _auth_error(
                 409, "The Google identity is linked to a different email address"
             )
         if user is None:
@@ -247,7 +247,7 @@ async def google_login(body: GoogleLoginRequest, db: AsyncSession) -> AuthTokens
             await db.flush()
             db.add(Project(user_id=user.id, name="General", is_general=True))
         elif user.google_subject not in (None, subject):
-            raise _http_error(
+            raise _auth_error(
                 409, "This account is linked to a different Google identity"
             )
         else:
@@ -260,7 +260,7 @@ async def google_login(body: GoogleLoginRequest, db: AsyncSession) -> AuthTokens
         try:
             await send_welcome_email(email)
         except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
-            raise _http_error(503, "Email delivery is temporarily unavailable") from exc
+            raise _auth_error(503, "Email delivery is temporarily unavailable") from exc
     return tokens
 
 
@@ -282,7 +282,7 @@ async def request_password_reset(body: EmailRequest, db: AsyncSession) -> Messag
         try:
             await send_action_email(body.email, raw_token, "reset_password")
         except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
-            raise _http_error(503, "Email delivery is temporarily unavailable") from exc
+            raise _auth_error(503, "Email delivery is temporarily unavailable") from exc
     return Message(
         message="If the account exists, a password reset email will be sent."
     )
@@ -306,12 +306,12 @@ async def confirm_password_reset(
             or action.used_at is not None
             or _utc(action.expires_at) <= now
         ):
-            raise _http_error(400, "The password reset link is invalid or expired")
+            raise _auth_error(400, "The password reset link is invalid or expired")
         action.used_at = now
         user = await db.get(User, action.user_id)
         if user is None:
-            raise _http_error(400, "The password reset link is invalid or expired")
-        user.password_hash = await run_in_threadpool(hash_password, body.new_password)
+            raise _auth_error(400, "The password reset link is invalid or expired")
+        user.password_hash = await asyncio.to_thread(hash_password, body.new_password)
         await db.execute(
             update(RefreshSession)
             .where(
@@ -335,10 +335,10 @@ async def refresh(body: RefreshRequest, db: AsyncSession) -> AuthTokens:
             or previous.revoked_at is not None
             or _utc(previous.expires_at) <= now
         ):
-            raise _http_error(401, "Invalid or expired refresh token")
+            raise _auth_error(401, "Invalid or expired refresh token")
         user = await db.get(User, previous.user_id)
         if user is None:
-            raise _http_error(401, "Invalid or expired refresh token")
+            raise _auth_error(401, "Invalid or expired refresh token")
         tokens = await _issue_session(db, user)
         replacement = await db.scalar(
             select(RefreshSession).where(
