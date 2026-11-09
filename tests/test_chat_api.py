@@ -141,14 +141,20 @@ async def test_chat_persists_messages_and_only_authorized_citations(
 
             return FakeTextModel()
 
-    from app.chat import service as chat_service_module
-    from app.search import service as search_service_module
+    from app.chat import routes as chat_routes
+    from app.search import routes as search_routes
 
-    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
-    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
     monkeypatch.setattr(
-        search_service_module,
-        "search_note_vectors",
+        chat_routes.chat_service, "_text_model_factory", Factory.create_text_model
+    )
+    monkeypatch.setattr(
+        search_routes.search_service,
+        "_embedding_model_factory",
+        Factory.create_embedding_model,
+    )
+    monkeypatch.setattr(
+        search_routes.search_service,
+        "_vector_search",
         lambda *_args: [(note_id, 2, 0.92), (private_note_id, 1, 0.89)],
     )
 
@@ -217,12 +223,20 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
 
             return FakeTextModel()
 
-    from app.chat import service as chat_service_module
-    from app.search import service as search_service_module
+    from app.chat import routes as chat_routes
+    from app.search import routes as search_routes
 
-    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
-    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
-    monkeypatch.setattr(search_service_module, "search_note_vectors", lambda *_args: [])
+    monkeypatch.setattr(
+        chat_routes.chat_service, "_text_model_factory", Factory.create_text_model
+    )
+    monkeypatch.setattr(
+        search_routes.search_service,
+        "_embedding_model_factory",
+        Factory.create_embedding_model,
+    )
+    monkeypatch.setattr(
+        search_routes.search_service, "_vector_search", lambda *_args: []
+    )
     created = await client.post(
         f"/v1/projects/{project_id}/conversations",
         headers={"Authorization": f"Bearer {token}"},
@@ -271,8 +285,9 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
 
             return FakeTextModel()
 
+    from app.chat import routes as chat_routes
     from app.chat import service as chat_service_module
-    from app.search import service as search_service_module
+    from app.search import routes as search_routes
 
     original_to_thread = chat_service_module.asyncio.to_thread
 
@@ -291,9 +306,17 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
                 await session.commit()
         return await original_to_thread(function, *args, **kwargs)
 
-    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
-    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
-    monkeypatch.setattr(search_service_module, "search_note_vectors", lambda *_args: [])
+    monkeypatch.setattr(
+        chat_routes.chat_service, "_text_model_factory", Factory.create_text_model
+    )
+    monkeypatch.setattr(
+        search_routes.search_service,
+        "_embedding_model_factory",
+        Factory.create_embedding_model,
+    )
+    monkeypatch.setattr(
+        search_routes.search_service, "_vector_search", lambda *_args: []
+    )
     monkeypatch.setattr(chat_service_module.asyncio, "to_thread", run_in_thread)
     response = await client.post(
         f"/v1/conversations/{conversation_id}/messages",
