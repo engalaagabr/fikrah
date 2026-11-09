@@ -10,7 +10,7 @@ Create the smallest runnable foundation for the FIKRAH Backend using the user-se
 - Provide a basic operational health endpoint.
 - PostgreSQL and Qdrant have been selected. PostgreSQL is the source of truth for application records; Qdrant stores embeddings and retrieval metadata.
 - PostgreSQL access uses SQLAlchemy 2.x async with the `asyncpg` driver, and Alembic manages schema migrations. Product tables remain out of scope until their requirements are defined.
-- Redis has been selected as the broker for Backend-owned asynchronous note-processing jobs. The worker library and Redis durability configuration remain open.
+- Redis is the broker for Backend-owned asynchronous note-processing jobs, with Celery selected as the worker. Redis durability, retries, and deployment configuration remain open.
 - Cross-store synchronization and recovery behavior remain open until designed.
 - Authentication and account behavior are implemented in the separate Account Access phase.
 

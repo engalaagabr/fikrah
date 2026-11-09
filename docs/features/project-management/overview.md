@@ -29,7 +29,7 @@ All routes require `Authorization: Bearer <access_token>`.
 
 The existing `projects` table stores `user_id`, `name`, and `is_general`. Each lookup filters by both the requested project ID and the authenticated user ID. Project deletion relies on PostgreSQL foreign-key cascades for future project-owned relational records.
 
-Note deletion, knowledge-link deletion, and durable Qdrant cleanup are handled with note persistence and deletion workflows. Those tables and cleanup records do not exist yet, so this feature does not claim to implement their cascading cleanup.
+Deleting a project removes its relational notes, note connections, and queued processing jobs in the same PostgreSQL transaction. It also writes one durable vector-cleanup request for each deleted note; Qdrant deletion is asynchronous and will be performed by the worker feature. The protected General project cannot be deleted.
 
 ## Verification
 

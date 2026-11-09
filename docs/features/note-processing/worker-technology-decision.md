@@ -1,6 +1,6 @@
 # Redis Worker Technology Decision
 
-**Status: Recommendation for review.** Redis is the approved job broker. The Python worker library and delivery guarantees are not yet approved.
+**Status: Celery selected.** Redis is the approved job broker. The user selected Celery for the worker; deployment durability, retry limits, and worker capacity still need configuration.
 
 ## Requirements
 
@@ -19,9 +19,9 @@
 
 The comparison is based on the projects' official documentation: [ARQ documentation](https://arq-docs.helpmanual.io/), [ARQ releases](https://github.com/python-arq/arq/releases), and [Celery Redis broker documentation](https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html).
 
-## Recommendation
+## Selection
 
-Use **ARQ** as the Redis-backed worker library for the initial Backend. Its asyncio-native worker model matches FastAPI and the async SQLAlchemy/Qdrant clients already selected. Keep the authoritative job state in PostgreSQL; ARQ's Redis job results are not the API's source of truth.
+Use **Celery** with Redis as the broker for note processing. PostgreSQL remains authoritative for note state and processing outcomes; Celery result storage will not be used as the API source of truth.
 
 ## Delivery and Recovery Requirements
 
@@ -31,4 +31,4 @@ Use **ARQ** as the Redis-backed worker library for the initial Backend. Its asyn
 - Preserve a durable enqueue intent in PostgreSQL and reconcile pending processing records with Redis after dispatch failures or Redis recovery. Redis is the broker, not the only record that work exists.
 - Do not put note text, PDFs, audio files, or AI responses in Redis job payloads. Queue only the note identifier and minimal job metadata.
 
-These delivery requirements do not yet define the concrete PostgreSQL outbox schema, retry limits/backoff, worker count, or Redis deployment settings. Confirm those with the implementation plan before coding the worker.
+The note API persists processing intent in PostgreSQL before queue dispatch. Keep queue payloads limited to note/job identifiers, and make handlers idempotent because late acknowledgement and redelivery can run a task more than once. Concrete retry limits/backoff, worker count, and Redis deployment settings remain to be implemented and documented.

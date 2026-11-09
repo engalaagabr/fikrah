@@ -1,6 +1,6 @@
 # Mobile API Surface and Remaining Proposals
 
-**Status: Partial.** Authentication is implemented and documented in `docs/features/authentication/overview.md`. The project routes below are approved and implemented. Remaining paths are proposals; their product behavior and detailed contracts must be approved before implementation.
+**Status: Partial.** Authentication and project management are implemented. The notes and processing routes below are approved and implemented in part; their persisted data contract is documented in `docs/features/note-management/overview.md`. Refinement, knowledge, search, graph, and chat routes remain proposals.
 
 ## Contract-wide rules
 
@@ -30,18 +30,20 @@ The user approved the project routes below for implementation. The rest of this 
 | `PATCH /v1/projects/{project_id}` | Rename a project. | When the user saves a project-name edit. | Updated project name. | Updated project. |
 | `DELETE /v1/projects/{project_id}` | Delete a project and its notes, links, and associated vectors. | When the user confirms project deletion. | Project ID in the path. | Deletion result. The response's treatment of asynchronous vector cleanup is undecided. The protected `General` project must be rejected. |
 
-## Notes and processing
+## Notes and processing — Contract Accepted
+
+The user approved the routes and initial processing states below. List pagination is deferred. The current response contains core note fields; AI-generated analysis fields will be added with their corresponding AI feature contracts.
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
-| `POST /v1/projects/{project_id}/notes` | Save a note and start Backend-owned AI processing. | After the user saves text or locally extracted audio/PDF text. | Plain text, optional user title, and an `Idempotency-Key` header. Mobile reuses the same key when retrying the same request after a timeout. No file. | Backend-generated note ID, selected project ID, current title if supplied, processing state, and creation/update times. |
-| `GET /v1/projects/{project_id}/notes` | List notes for a project. | When opening or refreshing a project. | Pagination and filters (open). | Notes with IDs, titles, processing states, and list-preview fields to be agreed. |
-| `GET /v1/notes/{note_id}` | Fetch the latest note and AI processing result, including its processing state for polling. | When opening a note and periodically until its processing state is terminal. | Note ID in the path. | Current text/title, processing state, concepts, cluster, refinement proposal if any, connections or their IDs, and timestamps. Exact shape is open. |
-| `PATCH /v1/notes/{note_id}` | Save user edits to note text or title and start a fresh processing job. | Whenever the user saves an edit to a note. | Changed text and/or title. | Updated note and new processing state. Results from earlier note versions must not overwrite this version. |
+| `POST /v1/projects/{project_id}/notes` | Save a note and enqueue Backend-owned AI processing. | After the user saves text or locally extracted audio/PDF text. | Plain text, optional user title, and an `Idempotency-Key` header (1–128 characters). Reuse the same key for retries of the same capture. No file. | `201` with Backend-generated note ID, project ID, optional title, text, revision, `queued` state, and timestamps. Reusing a key with a different request returns `409`; replaying a creation whose note has since been deleted returns `410`. |
+| `GET /v1/projects/{project_id}/notes` | List notes for a project. | When opening or refreshing a project. | Project ID in the path; no pagination initially. | Full note records ordered by most recently updated. |
+| `GET /v1/notes/{note_id}` | Fetch the latest note and its processing state for polling. | When opening a note and periodically until its processing state is terminal. | Note ID in the path. | Current text/title, revision, state (`queued`, `processing`, `completed`, `failed`), and timestamps. AI analysis fields will be defined with their features. |
+| `PATCH /v1/notes/{note_id}` | Save user edits and enqueue processing for the new revision. | Whenever the user saves a note edit. | Changed text and/or title; at least one field. | Updated note and `queued` state. Old revision results must not overwrite the current revision. |
 | `DELETE /v1/notes/{note_id}` | Delete a note and its connections and associated vector. | When the user confirms note deletion. | Note ID in the path. | Deletion result; vector cleanup may finish asynchronously. |
-| `POST /v1/notes/{note_id}/processing-retries` | Retry AI processing while preserving the note. | When the user requests reprocessing or a previous attempt failed. | Note ID in the path; optional retry reason is not required by current product behavior. | Accepted retry state/job reference and current note processing state. |
+| `POST /v1/notes/{note_id}/processing-retries` | Retry AI processing while preserving the note. | When the user requests reprocessing or a previous attempt failed. | Note ID in the path; no retry reason. | `202` with the current note and `queued` state. |
 
-AI generates a title during processing only when the user did not supply one. While title generation is pending, mobile can show `Processing…` as a UI-only placeholder; the value is not persisted as the note title. Mobile polls the note response for processing status; the exact state values and polling interval/backoff remain to be designed.
+AI generates a title during processing only when the user did not supply one. While title generation is pending, mobile can show `Processing…` as a UI-only placeholder; the value is not persisted as the note title. Mobile polls the note response for processing status; the interval/backoff remains for mobile integration guidance.
 
 ## Refinement proposals
 
@@ -82,4 +84,4 @@ Conversation ownership, note-context scoping, and chat history must remain isola
 
 ## Decisions needed before finalizing contracts
 
-Note processing state values, polling behavior, queue recovery settings, and the remaining notes, refinement, search, knowledge graph, and chat API schemas remain open in their related feature documents. Do not implement those proposed routes until their corresponding contracts are approved.
+Queue recovery settings and the refinement, search, knowledge graph, and chat API schemas remain open in their related feature documents. Do not implement those proposed routes until their corresponding contracts are approved.
