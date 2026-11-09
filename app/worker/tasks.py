@@ -6,16 +6,19 @@ from uuid import UUID
 
 from celery import Task
 from qdrant_client import QdrantClient, models as qdrant_models
-from sqlalchemy import create_engine, or_, select
+from sqlalchemy import create_engine, delete, or_, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.ai.providers import AIProviderFactory
-from app.models import Note, NoteProcessingJob, VectorCleanupRequest
+from app.models import Note, NoteConnection, NoteProcessingJob, VectorCleanupRequest
 from app.worker.celery_app import celery_app
 
 _STALE_DISPATCH_AFTER = timedelta(minutes=5)
 _STALE_PROCESSING_AFTER = timedelta(minutes=15)
+_MAX_CONNECTIONS_PER_NOTE = 10
 
 
 def _session_factory() -> tuple[object, sessionmaker[Session]]:
@@ -51,6 +54,55 @@ def _qdrant_client() -> tuple[QdrantClient, str, int]:
             if collection_name not in collections:
                 raise
     return client, collection_name, dimensions
+
+
+def _normalized_concepts(concepts: list[str]) -> set[str]:
+    return {concept.strip().casefold() for concept in concepts if concept.strip()}
+
+
+def _refresh_note_connections(session: Session, note: Note) -> None:
+    """Replace this note's outgoing concept links with its strongest matches."""
+    own_concepts = _normalized_concepts(note.concepts)
+    session.execute(
+        delete(NoteConnection).where(NoteConnection.source_note_id == note.id)
+    )
+    if not own_concepts:
+        return
+
+    candidates = session.scalars(
+        select(Note)
+        .where(
+            Note.id != note.id,
+            Note.user_id == note.user_id,
+            Note.project_id == note.project_id,
+            Note.processing_status == "completed",
+        )
+        .order_by(Note.updated_at.desc(), Note.id)
+    ).all()
+    related: list[tuple[int, Note]] = []
+    for candidate in candidates:
+        overlap = own_concepts & _normalized_concepts(candidate.concepts)
+        if overlap:
+            related.append((len(overlap), candidate))
+
+    # Candidates already arrive newest-first; the stable sort uses recency for ties.
+    related.sort(key=lambda item: -item[0])
+    table = NoteConnection.__table__
+    dialect = session.get_bind().dialect.name
+    for _, candidate in related[:_MAX_CONNECTIONS_PER_NOTE]:
+        values = {"source_note_id": note.id, "target_note_id": candidate.id}
+        if dialect == "postgresql":
+            statement = pg_insert(table).values(**values).on_conflict_do_nothing(
+                index_elements=["source_note_id", "target_note_id"]
+            )
+            session.execute(statement)
+        elif dialect == "sqlite":
+            statement = sqlite_insert(table).values(**values).on_conflict_do_nothing(
+                index_elements=["source_note_id", "target_note_id"]
+            )
+            session.execute(statement)
+        else:
+            session.add(NoteConnection(**values))
 
 
 class NoteProcessingTask(Task):
@@ -140,6 +192,13 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
             if len(embedding) != dimensions:
                 raise ValueError(f"Expected {dimensions}-dimensional embedding, received {len(embedding)}")
             with sessions.begin() as session:
+                # Serialize relation refreshes per project so two notes finishing
+                # concurrently cannot both miss each other as still-processing.
+                if session.get_bind().dialect.name == "postgresql":
+                    session.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtextextended(:project_id, 0))"),
+                        {"project_id": str(project_id)},
+                    )
                 job = session.scalar(
                     select(NoteProcessingJob)
                     .where(NoteProcessingJob.id == UUID(job_id))
@@ -176,6 +235,7 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
                 note.refinement_proposal = analysis.refinement_proposal
                 note.concepts = analysis.concepts[:8]
                 note.processing_status = "completed"
+                _refresh_note_connections(session, note)
                 job.status = "completed"
         finally:
             client.close()

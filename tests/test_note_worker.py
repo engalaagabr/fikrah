@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.ai.providers import NoteAnalysis
-from app.models import Note, NoteProcessingJob, Project, User, VectorCleanupRequest
+from app.models import Note, NoteConnection, NoteProcessingJob, Project, User, VectorCleanupRequest
 from app.models.base import Base
 from app.worker.tasks import process_note_job
 
@@ -142,6 +142,95 @@ def test_stale_note_job_does_not_call_ai_or_overwrite_new_revision(
         assert note.content == "New version"
         assert note.processing_status == "queued"
         assert job.status == "stale"
+    engine.dispose()
+
+
+def test_note_processing_links_shared_concepts_only_with_completed_project_notes(
+    note_job_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.worker import tasks
+
+    database_path, job_id, note_id = note_job_db
+    engine = create_engine(f"sqlite:///{database_path}")
+    with Session(engine) as session:
+        note = session.get(Note, note_id)
+        assert note is not None
+        same_project = Note(
+            user_id=note.user_id,
+            project_id=note.project_id,
+            content="Related thought",
+            concepts=[" Ideas ", "Planning"],
+            processing_status="completed",
+        )
+        processing = Note(
+            user_id=note.user_id,
+            project_id=note.project_id,
+            content="Still processing",
+            concepts=["knowledge"],
+            processing_status="processing",
+        )
+        other_user = User(email="other-worker@example.com", email_verified_at=datetime.now(timezone.utc))
+        session.add_all([same_project, processing, other_user])
+        session.flush()
+        foreign = Note(
+            user_id=other_user.id,
+            project_id=note.project_id,
+            content="Foreign user's related note",
+            concepts=["knowledge", "ideas"],
+            processing_status="completed",
+        )
+        unrelated_project = Project(user_id=note.user_id, name="Other project")
+        session.add_all([foreign, unrelated_project])
+        session.flush()
+        other_project_note = Note(
+            user_id=note.user_id,
+            project_id=unrelated_project.id,
+            content="Same idea, different project",
+            concepts=["ideas"],
+            processing_status="completed",
+        )
+        session.add(other_project_note)
+        session.commit()
+        same_project_id = same_project.id
+
+    qdrant = FakeQdrant()
+    monkeypatch.setattr(tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel())
+    monkeypatch.setattr(tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel())
+    monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
+
+    result = process_note_job.apply(args=[str(job_id)], task_id="worker-task-links", throw=True)
+
+    assert result.successful()
+    with Session(engine) as session:
+        links = session.query(NoteConnection).all()
+        assert len(links) == 1
+        link = links[0]
+        assert {link.source_note_id, link.target_note_id} == {note_id, same_project_id}
+    engine.dispose()
+
+
+def test_reprocessing_note_removes_obsolete_connections(note_job_db) -> None:
+    from app.worker import tasks
+
+    database_path, _, note_id = note_job_db
+    engine = create_engine(f"sqlite:///{database_path}")
+    with Session(engine) as session:
+        note = session.get(Note, note_id)
+        assert note is not None
+        related = Note(
+            user_id=note.user_id,
+            project_id=note.project_id,
+            content="Old related thought",
+            concepts=["knowledge"],
+            processing_status="completed",
+        )
+        session.add(related)
+        session.flush()
+        session.add(NoteConnection(source_note_id=note_id, target_note_id=related.id))
+        note.concepts = ["different"]
+        tasks._refresh_note_connections(session, note)
+        session.commit()
+        assert session.query(NoteConnection).count() == 0
     engine.dispose()
 
 
