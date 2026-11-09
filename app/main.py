@@ -8,6 +8,7 @@ from app.database import close_database, initialize_database
 from app.projects.routes import router as projects_router
 from app.notes.routes import router as notes_router
 from app.connections.routes import router as connections_router
+from app.search.routes import router as search_router
 
 
 @asynccontextmanager
@@ -26,6 +27,7 @@ app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(notes_router)
 app.include_router(connections_router)
+app.include_router(search_router)
 
 
 @app.get("/health", tags=["operations"])
