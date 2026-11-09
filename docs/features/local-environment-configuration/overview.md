@@ -8,9 +8,10 @@ environment variables take precedence over values in the file.
 
 ## Setup
 
-Create `.env` in the repository root. Set local PostgreSQL, Redis, and Qdrant
-URLs, then add provider credentials when AI-backed processing is needed. The
-workspace may contain a private `.env`; it must not be committed.
+Copy `.env.example` to `.env` in the repository root. Set local PostgreSQL,
+Redis, and Qdrant URLs, then add provider credentials when AI-backed processing
+is needed. `.env.example` contains placeholders only; the workspace `.env` may
+contain private values and must not be committed.
 
 ## Loading behavior
 
