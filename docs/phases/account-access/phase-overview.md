@@ -9,6 +9,7 @@ Provide secure personal accounts for the mobile application and enforce a clear 
 - Email/password registration and login with mandatory email verification.
 - Google ID-token sign-in and linking for verified matching email addresses.
 - Email verification and password reset through configurable SMTP links.
+- HTML email templates for verification before login and password reset, with plain-text alternatives.
 - Short-lived JWT access tokens and rotating, revocable opaque refresh tokens.
 - Current-user endpoint and protected `General` project creation.
 - PostgreSQL persistence, schema migration, and API contract documentation.
