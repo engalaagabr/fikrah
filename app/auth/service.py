@@ -8,17 +8,17 @@ import aiosmtplib
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.errors import AuthServiceError
-from app.auth.schemas import (
-    AuthTokens,
-    Credentials,
-    EmailRequest,
-    GoogleLoginRequest,
-    Message,
-    RefreshRequest,
-    ResetPasswordRequest,
-    TokenRequest,
+from app.auth.contracts import (
+    ActionToken,
+    AuthMessage,
+    AuthTokenPair,
+    EmailAddress,
+    EmailPassword,
+    GoogleIdentityToken,
+    PasswordReset,
+    RefreshToken,
 )
+from app.auth.errors import AuthServiceError
 from app.auth.security import (
     DUMMY_PASSWORD_HASH,
     REFRESH_TOKEN_TTL,
@@ -105,7 +105,7 @@ async def _new_action_token(
     return raw
 
 
-async def _issue_session(db: AsyncSession, user: User) -> AuthTokens:
+async def _issue_session(db: AsyncSession, user: User) -> AuthTokenPair:
     refresh = new_opaque_token()
     db.add(
         RefreshSession(
@@ -115,10 +115,12 @@ async def _issue_session(db: AsyncSession, user: User) -> AuthTokens:
         )
     )
     await db.flush()
-    return AuthTokens(access_token=create_access_token(user.id), refresh_token=refresh)
+    return AuthTokenPair(
+        access_token=create_access_token(user.id), refresh_token=refresh
+    )
 
 
-async def register(body: Credentials, db: AsyncSession) -> Message:
+async def register(body: EmailPassword, db: AsyncSession) -> AuthMessage:
     raw_token: str | None = None
     async with db.begin():
         exists = await db.scalar(select(User.id).where(User.email == body.email))
@@ -139,12 +141,12 @@ async def register(body: Credentials, db: AsyncSession) -> Message:
             await send_welcome_email(body.email)
         except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
             raise _auth_error(503, "Email delivery is temporarily unavailable") from exc
-    return Message(
+    return AuthMessage(
         message="If the address can be registered, a verification email will be sent."
     )
 
 
-async def verify_email(body: TokenRequest, db: AsyncSession) -> Message:
+async def verify_email(body: ActionToken, db: AsyncSession) -> AuthMessage:
     now = datetime.now(timezone.utc)
     async with db.begin():
         action = await db.scalar(
@@ -166,10 +168,10 @@ async def verify_email(body: TokenRequest, db: AsyncSession) -> Message:
         if user is None:
             raise _auth_error(400, "The verification link is invalid or expired")
         user.email_verified_at = now
-    return Message(message="Email verified")
+    return AuthMessage(message="Email verified")
 
 
-async def resend_verification(body: EmailRequest, db: AsyncSession) -> Message:
+async def resend_verification(body: EmailAddress, db: AsyncSession) -> AuthMessage:
     raw_token: str | None = None
     async with db.begin():
         user = await db.scalar(
@@ -188,10 +190,12 @@ async def resend_verification(body: EmailRequest, db: AsyncSession) -> Message:
             await send_action_email(body.email, raw_token, "verify_email")
         except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
             raise _auth_error(503, "Email delivery is temporarily unavailable") from exc
-    return Message(message="If the address needs verification, an email will be sent.")
+    return AuthMessage(
+        message="If the address needs verification, an email will be sent."
+    )
 
 
-async def login(body: Credentials, db: AsyncSession) -> AuthTokens:
+async def login(body: EmailPassword, db: AsyncSession) -> AuthTokenPair:
     user = await db.scalar(select(User).where(User.email == body.email))
     if user is None or user.password_hash is None:
         await asyncio.to_thread(verify_password, body.password, DUMMY_PASSWORD_HASH)
@@ -209,7 +213,7 @@ async def login(body: Credentials, db: AsyncSession) -> AuthTokens:
     return tokens
 
 
-async def google_login(body: GoogleLoginRequest, db: AsyncSession) -> AuthTokens:
+async def google_login(body: GoogleIdentityToken, db: AsyncSession) -> AuthTokenPair:
     audience = os.getenv("GOOGLE_CLIENT_ID")
     if not audience:
         raise _auth_error(503, "Google sign-in is not configured")
@@ -264,7 +268,7 @@ async def google_login(body: GoogleLoginRequest, db: AsyncSession) -> AuthTokens
     return tokens
 
 
-async def request_password_reset(body: EmailRequest, db: AsyncSession) -> Message:
+async def request_password_reset(body: EmailAddress, db: AsyncSession) -> AuthMessage:
     raw_token: str | None = None
     async with db.begin():
         user = await db.scalar(
@@ -283,14 +287,12 @@ async def request_password_reset(body: EmailRequest, db: AsyncSession) -> Messag
             await send_action_email(body.email, raw_token, "reset_password")
         except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
             raise _auth_error(503, "Email delivery is temporarily unavailable") from exc
-    return Message(
+    return AuthMessage(
         message="If the account exists, a password reset email will be sent."
     )
 
 
-async def confirm_password_reset(
-    body: ResetPasswordRequest, db: AsyncSession
-) -> Message:
+async def confirm_password_reset(body: PasswordReset, db: AsyncSession) -> AuthMessage:
     now = datetime.now(timezone.utc)
     async with db.begin():
         action = await db.scalar(
@@ -319,10 +321,10 @@ async def confirm_password_reset(
             )
             .values(revoked_at=now)
         )
-    return Message(message="Password reset successfully")
+    return AuthMessage(message="Password reset successfully")
 
 
-async def refresh(body: RefreshRequest, db: AsyncSession) -> AuthTokens:
+async def refresh(body: RefreshToken, db: AsyncSession) -> AuthTokenPair:
     now = datetime.now(timezone.utc)
     async with db.begin():
         previous = await db.scalar(
@@ -350,7 +352,7 @@ async def refresh(body: RefreshRequest, db: AsyncSession) -> AuthTokens:
     return tokens
 
 
-async def logout(body: RefreshRequest, db: AsyncSession) -> Message:
+async def logout(body: RefreshToken, db: AsyncSession) -> AuthMessage:
     async with db.begin():
         session = await db.scalar(
             select(RefreshSession)
@@ -359,4 +361,4 @@ async def logout(body: RefreshRequest, db: AsyncSession) -> Message:
         )
         if session is not None and session.revoked_at is None:
             session.revoked_at = datetime.now(timezone.utc)
-    return Message(message="Signed out")
+    return AuthMessage(message="Signed out")
