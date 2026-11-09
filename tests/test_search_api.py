@@ -128,7 +128,7 @@ class FakeEmbeddingModel:
 async def test_search_returns_only_authorized_current_completed_notes(
     search_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.search import service
+    from app.search import routes as search_routes
 
     (
         client,
@@ -161,8 +161,12 @@ async def test_search_returns_only_authorized_current_completed_notes(
             (private_id, 1, 0.80),
         ]
 
-    monkeypatch.setattr(service, "AIProviderFactory", Factory)
-    monkeypatch.setattr(service, "search_note_vectors", find_vectors)
+    monkeypatch.setattr(
+        search_routes.search_service,
+        "_embedding_model_factory",
+        Factory.create_embedding_model,
+    )
+    monkeypatch.setattr(search_routes.search_service, "_vector_search", find_vectors)
 
     response = await client.post(
         f"/v1/projects/{project_id}/search",
@@ -181,14 +185,16 @@ async def test_search_returns_only_authorized_current_completed_notes(
 async def test_search_is_scoped_to_the_authenticated_user_and_selected_project(
     search_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.search import service
+    from app.search import routes as search_routes
 
     client, _, _, other_project_id, _, _, _, _, _, token = search_api
 
     def unexpected_search(*args: object) -> list[tuple[UUID, int, float]]:
         raise AssertionError("Qdrant must not be queried for another user's project")
 
-    monkeypatch.setattr(service, "search_note_vectors", unexpected_search)
+    monkeypatch.setattr(
+        search_routes.search_service, "_vector_search", unexpected_search
+    )
     response = await client.post(
         f"/v1/projects/{other_project_id}/search",
         headers={"Authorization": f"Bearer {token}"},

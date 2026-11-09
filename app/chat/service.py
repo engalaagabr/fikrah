@@ -1,6 +1,7 @@
 """Project chat use cases, retrieval orchestration, and persistence rules."""
 
 import asyncio
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -8,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.contracts import ChatHistoryMessage, ChatNoteContext
+from app.ai.ports import TextModel
 from app.chat.schemas import (
     ConversationCreate,
     ConversationDetail,
@@ -17,8 +19,8 @@ from app.chat.schemas import (
     MessageView,
     SourceView,
 )
-from app.infrastructure.ai.factory import AIProviderFactory
 from app.models import ChatConversation, ChatMessage, ChatMessageSource, Note, Project
+from app.search.errors import SearchUnavailableError
 from app.search.service import SearchProjectNotFound, SemanticSearchService
 
 CHAT_CONTEXT_LIMIT = 8
@@ -33,8 +35,13 @@ class ChatServiceError(Exception):
 
 
 class ChatService:
-    def __init__(self, search_service: SemanticSearchService | None = None) -> None:
-        self._search_service = search_service or SemanticSearchService()
+    def __init__(
+        self,
+        search_service: SemanticSearchService,
+        text_model_factory: Callable[[], TextModel],
+    ) -> None:
+        self._search_service = search_service
+        self._text_model_factory = text_model_factory
 
     async def _owned_project(
         self, db: AsyncSession, user_id: UUID, project_id: UUID, *, lock: bool = False
@@ -172,7 +179,7 @@ class ChatService:
             )
         except SearchProjectNotFound as error:
             raise ChatServiceError(404, "Project not found") from error
-        except Exception as error:
+        except SearchUnavailableError as error:
             raise ChatServiceError(
                 503, "Project knowledge is temporarily unavailable"
             ) from error
@@ -187,7 +194,7 @@ class ChatService:
         ]
         matching_revisions = {match.note.id: match.note.revision for match in matches}
         try:
-            text_model = AIProviderFactory.create_text_model()
+            text_model = self._text_model_factory()
             answer = await asyncio.to_thread(
                 text_model.answer_question,
                 body.content,

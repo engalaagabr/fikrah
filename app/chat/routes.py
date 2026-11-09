@@ -15,14 +15,14 @@ from app.chat.schemas import (
     MessageCreate,
     MessageSubmission,
 )
-from app.chat.service import ChatService, ChatServiceError
+from app.chat.service import ChatServiceError
 from app.database import get_db_session
+from app.infrastructure.container import chat_service
 from app.models import User
 
 router = APIRouter(tags=["chat"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]
 AuthenticatedUser = Annotated[User, Depends(current_user)]
-chat_service = ChatService()
 T = TypeVar("T")
 
 

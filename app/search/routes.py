@@ -8,15 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
 from app.database import get_db_session
-from app.infrastructure.vector_store.qdrant import SearchUnavailableError
+from app.infrastructure.container import search_service
 from app.models import User
+from app.search.errors import SearchUnavailableError
 from app.search.schemas import SearchRequest, SearchResult
-from app.search.service import SearchProjectNotFound, SemanticSearchService
+from app.search.service import SearchProjectNotFound
 
 router = APIRouter(tags=["search"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]
 AuthenticatedUser = Annotated[User, Depends(current_user)]
-search_service = SemanticSearchService()
 
 
 @router.post("/v1/projects/{project_id}/search", response_model=list[SearchResult])

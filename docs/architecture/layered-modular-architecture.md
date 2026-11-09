@@ -12,7 +12,7 @@ FastAPI routes  →  feature application services  →  feature contracts / AI p
 Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, AI providers)
 ```
 
-Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration.
+Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration. `app/infrastructure/container.py` is the composition root that wires external adapters into search and chat use cases; those use cases depend on injected callables and application-facing ports rather than concrete Qdrant or provider modules.
 
 ## Module map
 
@@ -42,7 +42,7 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 
 - Keep route modules thin; do not add SQL queries, provider SDK calls, or product decisions to route handlers.
 - Keep prompts and response contracts out of provider adapter modules.
-- Keep external SDKs and service-specific configuration inside `app/infrastructure/`.
+- Keep external SDKs and service-specific configuration inside `app/infrastructure/`; wire adapters to use cases in the composition root.
 - Keep each feature's request/response schemas and use cases inside that feature module.
 - Pass the authenticated user ID from the API boundary; never accept an owner ID from a client request.
 - Keep PostgreSQL authoritative for user-owned records. Treat Qdrant results as candidates that must be verified against PostgreSQL.
