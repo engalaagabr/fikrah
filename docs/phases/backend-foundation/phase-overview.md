@@ -32,5 +32,6 @@ Create the smallest runnable foundation for the FIKRAH Backend using the user-se
 The FastAPI application and Celery worker load a root `.env` file through
 `python-dotenv`. The file is local and ignored by Git; environment variables
 already supplied by the host take precedence. Local setup and supported
-variables are documented in
-[`local-environment-configuration`](../../features/local-environment-configuration/overview.md).
+variables are documented in [`local-environment-configuration`](../../features/local-environment-configuration/overview.md).
+The local PostgreSQL, Redis, and Qdrant containers are defined in
+[`local-development-stack`](../../features/local-development-stack/overview.md).
