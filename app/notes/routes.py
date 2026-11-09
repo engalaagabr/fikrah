@@ -86,6 +86,8 @@ class NoteView(BaseModel):
     project_id: UUID
     title: str | None
     content: str
+    concepts: list[str]
+    refinement_proposal: str | None
     revision: int
     processing_status: str
     created_at: datetime
