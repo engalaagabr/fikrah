@@ -25,6 +25,8 @@ class TextModel(Protocol):
 class EmbeddingModel(Protocol):
     def embed_note(self, content: str) -> list[float]: ...
 
+    def embed_query(self, query: str) -> list[float]: ...
+
 
 _SYSTEM_INSTRUCTION = """You analyze personal knowledge notes. Return only a JSON object with exactly these fields:
 title, refinement_proposal, concepts.
@@ -83,15 +85,21 @@ class GeminiEmbeddingModel:
         self._client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
 
     def embed_note(self, content: str) -> list[float]:
+        return self._embed(content, "RETRIEVAL_DOCUMENT")
+
+    def embed_query(self, query: str) -> list[float]:
+        return self._embed(query, "RETRIEVAL_QUERY")
+
+    def _embed(self, content: str, task_type: str) -> list[float]:
         response = self._client.models.embed_content(
             model=self._model,
             contents=content,
             config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_DOCUMENT", output_dimensionality=self._dimensions
+                task_type=task_type, output_dimensionality=self._dimensions
             ),
         )
         if not response.embeddings or not response.embeddings[0].values:
-            raise ValueError("Gemini returned an empty note embedding")
+            raise ValueError("Gemini returned an empty embedding")
         return response.embeddings[0].values
 
 

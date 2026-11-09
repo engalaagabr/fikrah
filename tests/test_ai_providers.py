@@ -56,3 +56,25 @@ def test_embedding_factory_uses_gemini_and_validates_dimensions(monkeypatch: pyt
     monkeypatch.setenv("GEMINI_EMBEDDING_DIMENSIONS", "512")
     with pytest.raises(RuntimeError, match="must be 768, 1536, or 3072"):
         AIProviderFactory.create_embedding_model()
+
+
+def test_gemini_embedding_uses_document_and_query_retrieval_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_types: list[str] = []
+
+    class Models:
+        def embed_content(self, *, model: str, contents: str, config: object) -> object:
+            task_types.append(config.task_type)
+            return type("Response", (), {"embeddings": [type("Embedding", (), {"values": [0.1]})()]})()
+
+    class Client:
+        def __init__(self, **kwargs: object) -> None:
+            self.models = Models()
+
+    monkeypatch.setattr(providers.genai, "Client", Client)
+    embedding_model = providers.GeminiEmbeddingModel("key", "model", 768)
+
+    assert embedding_model.embed_note("a note") == [0.1]
+    assert embedding_model.embed_query("a question") == [0.1]
+    assert task_types == ["RETRIEVAL_DOCUMENT", "RETRIEVAL_QUERY"]
