@@ -10,14 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.contracts import ChatHistoryMessage, ChatNoteContext
 from app.ai.ports import TextModel
-from app.chat.schemas import (
-    ConversationCreate,
-    ConversationDetail,
-    ConversationView,
-    MessageCreate,
-    MessageSubmission,
-    MessageView,
-    SourceView,
+from app.chat.contracts import (
+    ConversationCreateCommand,
+    ConversationHistory,
+    ConversationSummary,
+    MessageCreateCommand,
+    MessageRecord,
+    MessageSubmissionResult,
+    SourceReference,
 )
 from app.models import ChatConversation, ChatMessage, ChatMessageSource, Note, Project
 from app.search.errors import SearchUnavailableError
@@ -77,7 +77,7 @@ class ChatService:
 
     async def _message_views(
         self, db: AsyncSession, messages: list[ChatMessage]
-    ) -> list[MessageView]:
+    ) -> list[MessageRecord]:
         if not messages:
             return []
         rows = await db.execute(
@@ -87,21 +87,26 @@ class ChatService:
                 ChatMessageSource.message_id.in_([message.id for message in messages])
             )
         )
-        sources_by_message: dict[UUID, list[SourceView]] = {}
+        sources_by_message: dict[UUID, list[SourceReference]] = {}
         for message_id, note_id, title in rows:
             sources_by_message.setdefault(message_id, []).append(
-                SourceView(note_id=note_id, title=title)
+                SourceReference(note_id=note_id, title=title)
             )
         return [
-            MessageView.model_validate(message).model_copy(
-                update={"sources": sources_by_message.get(message.id, [])}
+            MessageRecord(
+                id=message.id,
+                role=message.role,
+                content=message.content,
+                supported=message.supported,
+                sources=tuple(sources_by_message.get(message.id, [])),
+                created_at=message.created_at,
             )
             for message in messages
         ]
 
     async def list_conversations(
         self, db: AsyncSession, user_id: UUID, project_id: UUID
-    ) -> list[ConversationView]:
+    ) -> list[ConversationSummary]:
         await self._owned_project(db, user_id, project_id)
         rows = await db.scalars(
             select(ChatConversation)
@@ -111,15 +116,15 @@ class ChatService:
             )
             .order_by(ChatConversation.updated_at.desc(), ChatConversation.id)
         )
-        return [ConversationView.model_validate(item) for item in rows]
+        return [self._conversation_summary(item) for item in rows]
 
     async def create_conversation(
         self,
         db: AsyncSession,
         user_id: UUID,
         project_id: UUID,
-        body: ConversationCreate,
-    ) -> ConversationView:
+        body: ConversationCreateCommand,
+    ) -> ConversationSummary:
         await self._owned_project(db, user_id, project_id, lock=True)
         conversation = ChatConversation(
             user_id=user_id,
@@ -129,11 +134,11 @@ class ChatService:
         db.add(conversation)
         await db.commit()
         await db.refresh(conversation)
-        return ConversationView.model_validate(conversation)
+        return self._conversation_summary(conversation)
 
     async def get_conversation(
         self, db: AsyncSession, user_id: UUID, conversation_id: UUID
-    ) -> ConversationDetail:
+    ) -> ConversationHistory:
         conversation = await self._owned_conversation(db, user_id, conversation_id)
         messages = list(
             await db.scalars(
@@ -142,9 +147,9 @@ class ChatService:
                 .order_by(ChatMessage.created_at, ChatMessage.id)
             )
         )
-        return ConversationDetail(
-            **ConversationView.model_validate(conversation).model_dump(),
-            messages=await self._message_views(db, messages),
+        return ConversationHistory(
+            conversation=self._conversation_summary(conversation),
+            messages=tuple(await self._message_views(db, messages)),
         )
 
     async def send_message(
@@ -152,8 +157,8 @@ class ChatService:
         db: AsyncSession,
         user_id: UUID,
         conversation_id: UUID,
-        body: MessageCreate,
-    ) -> MessageSubmission:
+        body: MessageCreateCommand,
+    ) -> MessageSubmissionResult:
         conversation = await self._owned_conversation(
             db, user_id, conversation_id, lock=True
         )
@@ -294,10 +299,22 @@ class ChatService:
         user_view, assistant_view = await self._message_views(
             db, [user_message, assistant_message]
         )
-        return MessageSubmission(
-            conversation=ConversationView.model_validate(conversation),
+        return MessageSubmissionResult(
+            conversation=self._conversation_summary(conversation),
             user_message=user_view,
             assistant_message=assistant_view,
+        )
+
+    @staticmethod
+    def _conversation_summary(
+        conversation: ChatConversation,
+    ) -> ConversationSummary:
+        return ConversationSummary(
+            id=conversation.id,
+            project_id=conversation.project_id,
+            title=conversation.title,
+            created_at=conversation.created_at,
+            updated_at=conversation.updated_at,
         )
 
     async def delete_conversation(

@@ -43,6 +43,8 @@ Deletes the conversation, all of its messages, and citation records. Deleting a 
 
 `chat_conversations`, `chat_messages`, and `chat_message_sources` store ownership, conversation history, support status, and citations. Cascading foreign keys and explicit deletion paths remove conversations with their project and remove citations when a note is deleted. Migration `20261109_05` creates the tables and indexes.
 
+HTTP request and response models stay in `app/chat/schemas.py`. Routes map validated requests to framework-independent commands in `app/chat/contracts.py`, and map application results back to the API response models. `ChatService` does not depend on Pydantic schemas.
+
 ## Verification
 
 Tests cover conversation persistence, automatic titles, project/user isolation, authorized citations, unsupported answers, and citation/conversation cleanup on deletion.
