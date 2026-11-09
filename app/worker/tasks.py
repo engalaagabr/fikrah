@@ -67,7 +67,11 @@ class NoteProcessingTask(Task):
                     return
                 note = session.get(Note, job.note_id)
                 job.status = "failed"
-                if note is not None and note.revision == job.revision:
+                if (
+                    note is not None
+                    and note.revision == job.revision
+                    and note.processing_generation == job.processing_generation
+                ):
                     note.processing_status = "failed"
                 session.commit()
         finally:
@@ -107,7 +111,11 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
             note = session.scalar(
                 select(Note).where(Note.id == job.note_id).with_for_update()
             )
-            if note is None or note.revision != job.revision:
+            if (
+                note is None
+                or note.revision != job.revision
+                or note.processing_generation != job.processing_generation
+            ):
                 job.status = "stale"
                 return
             job.status = "processing"
@@ -115,9 +123,16 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
             job.started_at = now
             job.attempt_count += 1
             note.processing_status = "processing"
-            note_snapshot = (note.id, note.user_id, note.project_id, note.revision, note.content)
+            note_snapshot = (
+                note.id,
+                note.user_id,
+                note.project_id,
+                note.revision,
+                note.processing_generation,
+                note.content,
+            )
 
-        note_id, user_id, project_id, revision, content = note_snapshot
+        note_id, user_id, project_id, revision, processing_generation, content = note_snapshot
         analysis = AIProviderFactory.create_text_model().analyze_note(content)
         embedding = AIProviderFactory.create_embedding_model().embed_note(content)
         client, collection, dimensions = _qdrant_client()
@@ -133,7 +148,11 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
                 note = session.scalar(select(Note).where(Note.id == note_id).with_for_update())
                 if job is None:
                     return
-                if note is None or note.revision != revision:
+                if (
+                    note is None
+                    or note.revision != revision
+                    or note.processing_generation != processing_generation
+                ):
                     job.status = "stale"
                     return
                 # Keep the note row lock while upserting so a concurrent edit/delete
@@ -147,6 +166,7 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
                             "user_id": str(user_id),
                             "project_id": str(project_id),
                             "revision": revision,
+                            "processing_generation": processing_generation,
                         },
                     )],
                     wait=True,
@@ -220,7 +240,11 @@ def dispatch_pending_work() -> None:
             for job in jobs:
                 if job.status == "processing":
                     note = session.get(Note, job.note_id)
-                    if note is not None and note.revision == job.revision:
+                    if (
+                        note is not None
+                        and note.revision == job.revision
+                        and note.processing_generation == job.processing_generation
+                    ):
                         note.processing_status = "queued"
                     job.status = "queued"
                     job.worker_task_id = None

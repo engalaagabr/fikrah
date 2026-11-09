@@ -116,6 +116,7 @@ async def test_note_create_retry_update_poll_and_delete(
     retry = await client.post(f"/v1/notes/{note['id']}/processing-retries", headers=headers)
     assert retry.status_code == 202
     assert retry.json()["revision"] == 2
+    assert retry.json()["processing_generation"] == 3
 
     deleted = await client.delete(f"/v1/notes/{note['id']}", headers=headers)
     assert deleted.status_code == 204
@@ -147,6 +148,123 @@ async def test_note_access_is_scoped_to_user_and_project(
     assert (await client.get(f"/v1/notes/{note_id}", headers=other)).status_code == 404
     assert (await client.patch(f"/v1/notes/{note_id}", headers=other, json={"title": "leak"})).status_code == 404
     assert (await client.delete(f"/v1/notes/{note_id}", headers=other)).status_code == 404
+    assert (
+        await client.post(
+            f"/v1/notes/{note_id}/refinement-regenerations",
+            headers=other,
+            json={"expected_processing_generation": 1},
+        )
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_refinement_can_be_accepted_rejected_or_regenerated(
+    note_api: tuple[AsyncClient, async_sessionmaker[AsyncSession], UUID, UUID, UUID, UUID, str, str]
+) -> None:
+    client, sessions, _, _, project_id, _, owner_token, _ = note_api
+    headers = {
+        "Authorization": f"Bearer {owner_token}",
+        "Idempotency-Key": "refinement-flow",
+    }
+    created = await client.post(
+        f"/v1/projects/{project_id}/notes",
+        headers=headers,
+        json={"content": "Original note"},
+    )
+    note_id = created.json()["id"]
+    async with sessions() as session:
+        note = await session.get(Note, UUID(note_id))
+        assert note is not None
+        note.processing_status = "completed"
+        note.refinement_proposal = "Clearer note"
+        await session.commit()
+
+    regenerated = await client.post(
+        f"/v1/notes/{note_id}/refinement-regenerations",
+        headers=headers,
+        json={"expected_processing_generation": 1},
+    )
+    assert regenerated.status_code == 202
+    assert regenerated.json()["content"] == "Original note"
+    assert regenerated.json()["refinement_proposal"] is None
+    assert regenerated.json()["processing_generation"] == 2
+    assert regenerated.json()["revision"] == 1
+
+    stale_reject = await client.post(
+        f"/v1/notes/{note_id}/refinement-rejections",
+        headers=headers,
+        json={"expected_processing_generation": 1},
+    )
+    assert stale_reject.status_code == 409
+
+    async with sessions() as session:
+        note = await session.get(Note, UUID(note_id))
+        assert note is not None
+        note.processing_status = "completed"
+        note.refinement_proposal = "A second wording"
+        await session.commit()
+
+    rejected = await client.post(
+        f"/v1/notes/{note_id}/refinement-rejections",
+        headers=headers,
+        json={"expected_processing_generation": 2},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["refinement_proposal"] is None
+    assert rejected.json()["content"] == "Original note"
+
+    async with sessions() as session:
+        note = await session.get(Note, UUID(note_id))
+        assert note is not None
+        note.refinement_proposal = "Accepted wording"
+        await session.commit()
+
+    accepted = await client.post(
+        f"/v1/notes/{note_id}/refinement-acceptance",
+        headers=headers,
+        json={"expected_processing_generation": 2},
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["content"] == "Accepted wording"
+    assert accepted.json()["refinement_proposal"] is None
+    assert accepted.json()["revision"] == 2
+    assert accepted.json()["processing_generation"] == 3
+    assert accepted.json()["processing_status"] == "queued"
+
+    async with sessions() as session:
+        jobs = await session.scalars(
+            select(NoteProcessingJob).where(NoteProcessingJob.note_id == UUID(note_id))
+        )
+        assert sorted(job.processing_generation for job in jobs) == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_editing_note_content_clears_proposal_for_previous_text(
+    note_api: tuple[AsyncClient, async_sessionmaker[AsyncSession], UUID, UUID, UUID, UUID, str, str]
+) -> None:
+    client, sessions, _, _, project_id, _, owner_token, _ = note_api
+    headers = {
+        "Authorization": f"Bearer {owner_token}",
+        "Idempotency-Key": "clear-old-proposal",
+    }
+    created = await client.post(
+        f"/v1/projects/{project_id}/notes", headers=headers, json={"content": "Old content"}
+    )
+    note_id = created.json()["id"]
+    async with sessions() as session:
+        note = await session.get(Note, UUID(note_id))
+        assert note is not None
+        note.refinement_proposal = "Rewrite of old content"
+        note.processing_status = "completed"
+        await session.commit()
+
+    updated = await client.patch(
+        f"/v1/notes/{note_id}", headers=headers, json={"content": "New content"}
+    )
+    assert updated.status_code == 200
+    assert updated.json()["content"] == "New content"
+    assert updated.json()["refinement_proposal"] is None
+    assert updated.json()["processing_generation"] == 2
 
 
 @pytest.mark.asyncio

@@ -49,6 +49,7 @@ class Note(Base):
     concepts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     refinement_proposal: Mapped[str | None] = mapped_column(Text, nullable=True)
     revision: Mapped[int] = mapped_column(default=1, nullable=False)
+    processing_generation: Mapped[int] = mapped_column(default=1, nullable=False)
     processing_status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -65,6 +66,7 @@ class NoteProcessingJob(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     note_id: Mapped[UUID] = mapped_column(ForeignKey("notes.id", ondelete="CASCADE"), index=True)
     revision: Mapped[int] = mapped_column(nullable=False)
+    processing_generation: Mapped[int] = mapped_column(default=1, nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False)
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

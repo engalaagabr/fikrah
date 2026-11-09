@@ -79,6 +79,10 @@ class NoteUpdate(BaseModel):
         return self
 
 
+class ProposalAction(BaseModel):
+    expected_processing_generation: int = Field(ge=1)
+
+
 class NoteView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -89,6 +93,7 @@ class NoteView(BaseModel):
     concepts: list[str]
     refinement_proposal: str | None
     revision: int
+    processing_generation: int
     processing_status: str
     created_at: datetime
     updated_at: datetime
@@ -98,8 +103,13 @@ def _note_not_found() -> HTTPException:
     return HTTPException(status_code=404, detail="Note not found")
 
 
-async def _owned_note(db: AsyncSession, user_id: UUID, note_id: UUID) -> Note:
-    note = await db.scalar(select(Note).where(Note.id == note_id, Note.user_id == user_id))
+async def _owned_note(
+    db: AsyncSession, user_id: UUID, note_id: UUID, *, lock: bool = False
+) -> Note:
+    query = select(Note).where(Note.id == note_id, Note.user_id == user_id)
+    if lock:
+        query = query.with_for_update()
+    note = await db.scalar(query)
     if note is None:
         raise _note_not_found()
     return note
@@ -150,7 +160,11 @@ async def create_note(
     note = Note(user_id=user.id, project_id=project_id, title=body.title, content=body.content)
     db.add(note)
     await db.flush()
-    db.add(NoteProcessingJob(note_id=note.id, revision=note.revision))
+    db.add(NoteProcessingJob(
+        note_id=note.id,
+        revision=note.revision,
+        processing_generation=note.processing_generation,
+    ))
     db.add(NoteIdempotencyKey(
         user_id=user.id,
         key=idempotency_key,
@@ -196,16 +210,23 @@ async def get_note(note_id: UUID, user: AuthenticatedUser, db: Db) -> NoteView:
 
 @router.patch("/v1/notes/{note_id}", response_model=NoteView)
 async def update_note(note_id: UUID, body: NoteUpdate, user: AuthenticatedUser, db: Db) -> NoteView:
-    note = await _owned_note(db, user.id, note_id)
-    if "content" in body.model_fields_set:
+    note = await _owned_note(db, user.id, note_id, lock=True)
+    content_changed = "content" in body.model_fields_set
+    if content_changed:
         if body.content is None:
             raise HTTPException(status_code=422, detail="Note content cannot be null")
         note.content = body.content
+        note.refinement_proposal = None
     if "title" in body.model_fields_set:
         note.title = body.title
     note.revision += 1
+    note.processing_generation += 1
     note.processing_status = "queued"
-    db.add(NoteProcessingJob(note_id=note.id, revision=note.revision))
+    db.add(NoteProcessingJob(
+        note_id=note.id,
+        revision=note.revision,
+        processing_generation=note.processing_generation,
+    ))
     await db.commit()
     await db.refresh(note)
     return NoteView.model_validate(note)
@@ -213,9 +234,82 @@ async def update_note(note_id: UUID, body: NoteUpdate, user: AuthenticatedUser, 
 
 @router.post("/v1/notes/{note_id}/processing-retries", response_model=NoteView, status_code=202)
 async def retry_note_processing(note_id: UUID, user: AuthenticatedUser, db: Db) -> NoteView:
-    note = await _owned_note(db, user.id, note_id)
+    note = await _owned_note(db, user.id, note_id, lock=True)
+    note.processing_generation += 1
     note.processing_status = "queued"
-    db.add(NoteProcessingJob(note_id=note.id, revision=note.revision))
+    db.add(NoteProcessingJob(
+        note_id=note.id,
+        revision=note.revision,
+        processing_generation=note.processing_generation,
+    ))
+    await db.commit()
+    await db.refresh(note)
+    return NoteView.model_validate(note)
+
+
+@router.post("/v1/notes/{note_id}/refinement-regenerations", response_model=NoteView, status_code=202)
+async def regenerate_refinement(
+    note_id: UUID,
+    body: ProposalAction,
+    user: AuthenticatedUser,
+    db: Db,
+) -> NoteView:
+    note = await _owned_note(db, user.id, note_id, lock=True)
+    if note.processing_generation != body.expected_processing_generation:
+        raise HTTPException(status_code=409, detail="The note processing result has changed")
+    if note.processing_status != "completed":
+        raise HTTPException(status_code=409, detail="The note must finish processing before regenerating its proposal")
+    note.processing_generation += 1
+    note.refinement_proposal = None
+    note.processing_status = "queued"
+    db.add(NoteProcessingJob(
+        note_id=note.id,
+        revision=note.revision,
+        processing_generation=note.processing_generation,
+    ))
+    await db.commit()
+    await db.refresh(note)
+    return NoteView.model_validate(note)
+
+
+@router.post("/v1/notes/{note_id}/refinement-acceptance", response_model=NoteView)
+async def accept_refinement(
+    note_id: UUID,
+    body: ProposalAction,
+    user: AuthenticatedUser,
+    db: Db,
+) -> NoteView:
+    note = await _owned_note(db, user.id, note_id, lock=True)
+    if note.processing_generation != body.expected_processing_generation:
+        raise HTTPException(status_code=409, detail="The note processing result has changed")
+    if note.processing_status != "completed" or note.refinement_proposal is None:
+        raise HTTPException(status_code=409, detail="No completed refinement proposal is available")
+    note.content = note.refinement_proposal
+    note.refinement_proposal = None
+    note.revision += 1
+    note.processing_generation += 1
+    note.processing_status = "queued"
+    db.add(NoteProcessingJob(
+        note_id=note.id,
+        revision=note.revision,
+        processing_generation=note.processing_generation,
+    ))
+    await db.commit()
+    await db.refresh(note)
+    return NoteView.model_validate(note)
+
+
+@router.post("/v1/notes/{note_id}/refinement-rejections", response_model=NoteView)
+async def reject_refinement(
+    note_id: UUID,
+    body: ProposalAction,
+    user: AuthenticatedUser,
+    db: Db,
+) -> NoteView:
+    note = await _owned_note(db, user.id, note_id, lock=True)
+    if note.processing_generation != body.expected_processing_generation:
+        raise HTTPException(status_code=409, detail="The note processing result has changed")
+    note.refinement_proposal = None
     await db.commit()
     await db.refresh(note)
     return NoteView.model_validate(note)
@@ -223,7 +317,7 @@ async def retry_note_processing(note_id: UUID, user: AuthenticatedUser, db: Db) 
 
 @router.delete("/v1/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_note(note_id: UUID, user: AuthenticatedUser, db: Db) -> Response:
-    note = await _owned_note(db, user.id, note_id)
+    note = await _owned_note(db, user.id, note_id, lock=True)
     db.add(VectorCleanupRequest(note_id=note.id))
     await db.execute(
         delete(NoteConnection).where(
