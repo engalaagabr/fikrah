@@ -10,6 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import current_user
 from app.database import get_db_session
 from app.models import User
+from app.notes.contracts import (
+    NoteCreateCommand,
+    NoteUpdateCommand,
+    ProposalActionCommand,
+)
 from app.notes.schemas import NoteCreate, NoteUpdate, NoteView, ProposalAction
 from app.notes.service import NoteService, NoteServiceError
 
@@ -44,7 +49,13 @@ async def create_note(
     ],
 ) -> NoteView:
     note = await _execute(
-        note_service.create_note(db, user.id, project_id, body, idempotency_key)
+        note_service.create_note(
+            db,
+            user.id,
+            project_id,
+            NoteCreateCommand(content=body.content, title=body.title),
+            idempotency_key,
+        )
     )
     return NoteView.model_validate(note)
 
@@ -67,7 +78,12 @@ async def get_note(note_id: UUID, user: AuthenticatedUser, db: Db) -> NoteView:
 async def update_note(
     note_id: UUID, body: NoteUpdate, user: AuthenticatedUser, db: Db
 ) -> NoteView:
-    note = await _execute(note_service.update_note(db, user.id, note_id, body))
+    command = NoteUpdateCommand(
+        content=body.content,
+        title=body.title,
+        provided_fields=frozenset(body.model_fields_set),
+    )
+    note = await _execute(note_service.update_note(db, user.id, note_id, command))
     return NoteView.model_validate(note)
 
 
@@ -92,7 +108,14 @@ async def regenerate_refinement(
     note_id: UUID, body: ProposalAction, user: AuthenticatedUser, db: Db
 ) -> NoteView:
     note = await _execute(
-        note_service.regenerate_refinement(db, user.id, note_id, body)
+        note_service.regenerate_refinement(
+            db,
+            user.id,
+            note_id,
+            ProposalActionCommand(
+                expected_processing_generation=body.expected_processing_generation
+            ),
+        )
     )
     return NoteView.model_validate(note)
 
@@ -101,7 +124,16 @@ async def regenerate_refinement(
 async def accept_refinement(
     note_id: UUID, body: ProposalAction, user: AuthenticatedUser, db: Db
 ) -> NoteView:
-    note = await _execute(note_service.accept_refinement(db, user.id, note_id, body))
+    note = await _execute(
+        note_service.accept_refinement(
+            db,
+            user.id,
+            note_id,
+            ProposalActionCommand(
+                expected_processing_generation=body.expected_processing_generation
+            ),
+        )
+    )
     return NoteView.model_validate(note)
 
 
@@ -109,7 +141,16 @@ async def accept_refinement(
 async def reject_refinement(
     note_id: UUID, body: ProposalAction, user: AuthenticatedUser, db: Db
 ) -> NoteView:
-    note = await _execute(note_service.reject_refinement(db, user.id, note_id, body))
+    note = await _execute(
+        note_service.reject_refinement(
+            db,
+            user.id,
+            note_id,
+            ProposalActionCommand(
+                expected_processing_generation=body.expected_processing_generation
+            ),
+        )
+    )
     return NoteView.model_validate(note)
 
 

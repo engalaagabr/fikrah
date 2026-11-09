@@ -1,6 +1,7 @@
 """Note application use cases and processing lifecycle rules."""
 
 import json
+from dataclasses import asdict
 from hashlib import sha256
 from uuid import UUID
 
@@ -17,7 +18,11 @@ from app.models import (
     Project,
     VectorCleanupRequest,
 )
-from app.notes.schemas import NoteCreate, NoteUpdate, ProposalAction
+from app.notes.contracts import (
+    NoteCreateCommand,
+    NoteUpdateCommand,
+    ProposalActionCommand,
+)
 
 
 class NoteServiceError(Exception):
@@ -53,8 +58,8 @@ class NoteService:
         return project
 
     @staticmethod
-    def _request_fingerprint(body: NoteCreate, project_id: UUID) -> str:
-        payload = {"project_id": str(project_id), **body.model_dump(mode="json")}
+    def _request_fingerprint(body: NoteCreateCommand, project_id: UUID) -> str:
+        payload = {"project_id": str(project_id), **asdict(body)}
         stable_body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return sha256(stable_body.encode()).hexdigest()
 
@@ -63,7 +68,7 @@ class NoteService:
         db: AsyncSession,
         user_id: UUID,
         project_id: UUID,
-        body: NoteCreate,
+        body: NoteCreateCommand,
         idempotency_key: str,
     ) -> Note:
         # Holding the project row lock serializes creation against project deletion.
@@ -147,15 +152,15 @@ class NoteService:
         return await self._owned_note(db, user_id, note_id)
 
     async def update_note(
-        self, db: AsyncSession, user_id: UUID, note_id: UUID, body: NoteUpdate
+        self, db: AsyncSession, user_id: UUID, note_id: UUID, body: NoteUpdateCommand
     ) -> Note:
         note = await self._owned_note(db, user_id, note_id, lock=True)
-        if "content" in body.model_fields_set:
+        if "content" in body.provided_fields:
             if body.content is None:
                 raise NoteServiceError(422, "Note content cannot be null")
             note.content = body.content
             note.refinement_proposal = None
-        if "title" in body.model_fields_set:
+        if "title" in body.provided_fields:
             note.title = body.title
         note.revision += 1
         note.processing_generation += 1
@@ -177,7 +182,11 @@ class NoteService:
         return note
 
     async def regenerate_refinement(
-        self, db: AsyncSession, user_id: UUID, note_id: UUID, body: ProposalAction
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        note_id: UUID,
+        body: ProposalActionCommand,
     ) -> Note:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
@@ -195,7 +204,11 @@ class NoteService:
         return note
 
     async def accept_refinement(
-        self, db: AsyncSession, user_id: UUID, note_id: UUID, body: ProposalAction
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        note_id: UUID,
+        body: ProposalActionCommand,
     ) -> Note:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
@@ -213,7 +226,11 @@ class NoteService:
         return note
 
     async def reject_refinement(
-        self, db: AsyncSession, user_id: UUID, note_id: UUID, body: ProposalAction
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        note_id: UUID,
+        body: ProposalActionCommand,
     ) -> Note:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
