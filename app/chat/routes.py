@@ -211,6 +211,11 @@ async def send_message(
         ChatHistoryMessage(role=message.role, content=message.content)
         for message in reversed(history_desc)
     ]
+    user_id_value = user.id
+    conversation_id_value = conversation.id
+    project_id_value = conversation.project_id
+    last_message_id = history_desc[0].id if history_desc else None
+    await db.rollback()
 
     try:
         embedding_model = AIProviderFactory.create_embedding_model()
@@ -218,8 +223,8 @@ async def send_message(
         matches = await run_in_threadpool(
             search_note_vectors,
             query_vector,
-            user.id,
-            conversation.project_id,
+            user_id_value,
+            project_id_value,
             CHAT_CONTEXT_LIMIT,
         )
     except Exception as exc:
@@ -233,8 +238,8 @@ async def send_message(
         notes = await db.scalars(
             select(Note).where(
                 Note.id.in_(matching_revisions),
-                Note.user_id == user.id,
-                Note.project_id == conversation.project_id,
+                Note.user_id == user_id_value,
+                Note.project_id == project_id_value,
                 Note.processing_status == "completed",
             )
         )
@@ -269,6 +274,22 @@ async def send_message(
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AI chat is temporarily unavailable") from exc
 
+    conversation = await _owned_conversation(
+        db, user_id_value, conversation_id_value, lock=True
+    )
+    latest_message_id = await db.scalar(
+        select(ChatMessage.id)
+        .where(ChatMessage.conversation_id == conversation.id)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(1)
+    )
+    if latest_message_id != last_message_id:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="The conversation changed while the answer was being generated. Retry the message.",
+        )
+
     valid_sources: list[UUID] = []
     if answer.supported:
         available_ids = set(authorized_notes)
@@ -279,6 +300,24 @@ async def send_message(
                 continue
             if parsed_id in available_ids and parsed_id not in valid_sources:
                 valid_sources.append(parsed_id)
+
+    if valid_sources:
+        current_sources = await db.scalars(
+            select(Note)
+            .where(
+                Note.id.in_(valid_sources),
+                Note.user_id == user_id_value,
+                Note.project_id == project_id_value,
+                Note.processing_status == "completed",
+            )
+            .with_for_update()
+        )
+        current_source_ids = {
+            note.id
+            for note in current_sources
+            if note.revision == matching_revisions.get(note.id)
+        }
+        valid_sources = [note_id for note_id in valid_sources if note_id in current_source_ids]
 
     supported = answer.supported and bool(valid_sources)
     answer_content = answer.answer.strip()

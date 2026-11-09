@@ -13,7 +13,7 @@ from app.ai.providers import ChatAnswer
 from app.auth.security import create_access_token
 from app.database import get_db_session
 from app.main import app as fastapi_app
-from app.models import ChatConversation, ChatMessageSource, Note, Project, User
+from app.models import ChatConversation, ChatMessage, ChatMessageSource, Note, Project, User
 from app.models.base import Base
 
 
@@ -215,6 +215,74 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
     assert assistant["supported"] is False
     assert assistant["sources"] == []
     assert "couldn't find an answer supported" in assistant["content"]
+
+
+@pytest.mark.asyncio
+async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generation(
+    chat_api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.chat import routes
+
+    client, sessions, _, project_id, _, _, _, token, _ = chat_api
+    created = await client.post(
+        f"/v1/projects/{project_id}/conversations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    conversation_id = UUID(created.json()["id"])
+    answer_call_seen = False
+
+    class Factory:
+        @staticmethod
+        def create_embedding_model() -> FakeEmbeddingModel:
+            return FakeEmbeddingModel()
+
+        @staticmethod
+        def create_text_model():
+            class FakeTextModel:
+                def answer_question(self, question, notes, history) -> ChatAnswer:
+                    return ChatAnswer(
+                        answer="I couldn't find an answer supported by your project notes.",
+                        supported=False,
+                        source_note_ids=[],
+                    )
+
+            return FakeTextModel()
+
+    original_run_in_threadpool = routes.run_in_threadpool
+
+    async def run_in_threadpool(function, *args):
+        nonlocal answer_call_seen
+        if getattr(function, "__name__", "") == "answer_question":
+            answer_call_seen = True
+            async with sessions() as session:
+                session.add(
+                    ChatMessage(
+                        conversation_id=conversation_id,
+                        role="user",
+                        content="A concurrent message",
+                    )
+                )
+                await session.commit()
+        return await original_run_in_threadpool(function, *args)
+
+    monkeypatch.setattr(routes, "AIProviderFactory", Factory)
+    monkeypatch.setattr(routes, "search_note_vectors", lambda *_args: [])
+    monkeypatch.setattr(routes, "run_in_threadpool", run_in_threadpool)
+    response = await client.post(
+        f"/v1/conversations/{conversation_id}/messages",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"content": "A competing question"},
+    )
+    assert answer_call_seen
+    assert response.status_code == 409
+    async with sessions() as session:
+        messages = list(
+            await session.scalars(
+                select(ChatMessage).where(ChatMessage.conversation_id == conversation_id)
+            )
+        )
+    assert [message.content for message in messages] == ["A concurrent message"]
 
 
 @pytest.mark.asyncio
