@@ -12,7 +12,7 @@ FastAPI routes  →  feature application services  →  feature contracts / AI p
 Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, AI providers)
 ```
 
-Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration.
+Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration.
 
 ## Module map
 
