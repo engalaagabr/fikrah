@@ -12,13 +12,13 @@ FastAPI routes  →  feature application services  →  feature contracts / AI p
 Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, AI providers)
 ```
 
-Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration. `app/infrastructure/container.py` is the composition root that wires external adapters into search and chat use cases; those use cases depend on injected callables and application-facing ports rather than concrete Qdrant or provider modules.
+Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration. `app/infrastructure/container.py` is the composition root that wires external adapters into authentication, search, and chat use cases; those use cases depend on injected capabilities and application-facing errors rather than concrete SMTP, Google, Qdrant, or AI provider modules.
 
 ## Module map
 
 | Module | HTTP | Application | Infrastructure boundary |
 |---|---|---|---|
-| Authentication | `app/auth/routes.py` | `app/auth/service.py`, schemas, shared auth dependencies | SMTP and Google identity adapters under `app/infrastructure/`, PostgreSQL token/session records |
+| Authentication | `app/auth/routes.py` | `app/auth/service.py`, schemas, shared auth dependencies, integration errors in `app/auth/ports.py` | SMTP and Google identity adapters under `app/infrastructure/`, wired through `app/infrastructure/container.py`; PostgreSQL token/session records |
 | Projects | `app/projects/routes.py` | `ProjectService` | `ProjectRepository` and PostgreSQL |
 | Notes | `app/notes/routes.py` | `NoteService` | PostgreSQL, processing-job outbox, Celery worker |
 | Search | `app/search/routes.py` | `SemanticSearchService` | Gemini embeddings and Qdrant adapter |

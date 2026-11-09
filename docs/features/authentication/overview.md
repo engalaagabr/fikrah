@@ -49,6 +49,8 @@ All routes use `/v1/auth`. JSON is used for requests and responses. Tokens are o
 - Email responses are intentionally generic for registration, resend, and recovery. Request throttling is persisted in PostgreSQL.
 - PostgreSQL is the source of truth for account and session state. Cascading foreign keys remove authentication data when a user record is deleted.
 - Authentication use cases use framework-independent command/result dataclasses and raise `AuthServiceError` values. The route layer maps API schemas to those commands and translates failures/results into HTTP responses.
+- `AuthService` receives email delivery, Google token verification, and Google client ID configuration through `app/infrastructure/container.py`. The application layer does not import FastAPI, SMTP libraries, Google SDKs, or read provider configuration from the environment.
+- Infrastructure adapters translate provider-specific delivery and token-verification failures into `EmailDeliveryError` and `GoogleIdentityTokenError`, which are defined at the authentication boundary.
 
 ## Environment Configuration
 
