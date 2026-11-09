@@ -12,11 +12,11 @@ Create the smallest runnable foundation for the FIKRAH Backend using the user-se
 - PostgreSQL access uses SQLAlchemy 2.x async with the `asyncpg` driver, and Alembic manages schema migrations. Product tables remain out of scope until their requirements are defined.
 - Redis has been selected as the broker for Backend-owned asynchronous note-processing jobs. The worker library and Redis durability configuration remain open.
 - Cross-store synchronization and recovery behavior remain open until designed.
-- Keep authentication-provider and AI-provider decisions open until product and architecture requirements are discussed.
+- Authentication and account behavior are implemented in the separate Account Access phase.
 
 ## Not Included Yet
 
-- Authentication or account management.
+- Product CRUD and AI workflows.
 - Product persistence models, authentication, and CRUD behavior. The connection/session infrastructure and migration tooling are covered by the PostgreSQL foundation feature.
 - AI provider integration or note-processing workflows.
 - Product endpoints for notes, projects, search, graph, or chat.
