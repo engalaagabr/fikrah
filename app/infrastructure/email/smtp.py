@@ -8,8 +8,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import aiosmtplib
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-
-EMAIL_TEMPLATE_DIRECTORY = Path(__file__).resolve().parents[2] / "static" / "emails"
+EMAIL_TEMPLATE_DIRECTORY = Path(__file__).resolve().parents[3] / "static" / "emails"
 EMAIL_TEMPLATES = Environment(
     loader=FileSystemLoader(EMAIL_TEMPLATE_DIRECTORY),
     autoescape=select_autoescape(("html", "xml")),
@@ -45,7 +44,8 @@ def _smtp_settings() -> dict[str, object]:
         "username": username,
         "password": password,
         "use_tls": use_tls,
-        "start_tls": not use_tls and os.getenv("SMTP_START_TLS", "true").lower() == "true",
+        "start_tls": not use_tls
+        and os.getenv("SMTP_START_TLS", "true").lower() == "true",
     }
 
 
@@ -71,7 +71,9 @@ async def send_action_email(recipient: str, token: str, purpose: str) -> None:
         raise RuntimeError("EMAIL_ACTION_BASE_URL must be an absolute HTTPS URL")
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query["token"] = token
-    action_url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    action_url = urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
     message = EmailMessage()
     message["To"] = recipient
     message["Subject"] = f"FIKRAH — {email_action['subject']}"

@@ -1,14 +1,17 @@
 """Project-scoped semantic retrieval use case."""
 
-from dataclasses import dataclass
 import asyncio
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.ai.factory import AIProviderFactory
-from app.infrastructure.vector_store.qdrant import SearchUnavailableError, search_note_vectors
+from app.infrastructure.vector_store.qdrant import (
+    SearchUnavailableError,
+    search_note_vectors,
+)
 from app.models import Note, Project
 
 
@@ -46,7 +49,9 @@ class SemanticSearchService:
         except Exception as exc:
             if isinstance(exc, SearchUnavailableError):
                 raise
-            raise SearchUnavailableError("Embedding or vector retrieval failed") from exc
+            raise SearchUnavailableError(
+                "Embedding or vector retrieval failed"
+            ) from exc
 
         if not matches:
             return []

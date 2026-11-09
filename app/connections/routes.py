@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
 from app.connections.schemas import ProjectGraph, RelatedNoteView
-from app.connections.service import KnowledgeConnectionService, KnowledgeResourceNotFound
+from app.connections.service import (
+    KnowledgeConnectionService,
+    KnowledgeResourceNotFound,
+)
 from app.database import get_db_session
 from app.models import User
 

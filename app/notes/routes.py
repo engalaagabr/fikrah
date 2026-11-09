@@ -24,7 +24,9 @@ async def _execute(call: Awaitable[T]) -> T:
     try:
         return await call
     except NoteServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+        raise HTTPException(
+            status_code=error.status_code, detail=error.detail
+        ) from error
 
 
 @router.post(
@@ -37,7 +39,9 @@ async def create_note(
     body: NoteCreate,
     user: AuthenticatedUser,
     db: Db,
-    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
+    ],
 ) -> NoteView:
     note = await _execute(
         note_service.create_note(db, user.id, project_id, body, idempotency_key)

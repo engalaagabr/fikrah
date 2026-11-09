@@ -26,7 +26,9 @@ chat_service = ChatService()
 T = TypeVar("T")
 
 
-@router.get("/v1/projects/{project_id}/conversations", response_model=list[ConversationView])
+@router.get(
+    "/v1/projects/{project_id}/conversations", response_model=list[ConversationView]
+)
 async def list_conversations(
     project_id: UUID, user: AuthenticatedUser, db: Db
 ) -> list[ConversationView]:
@@ -53,9 +55,7 @@ async def create_conversation(
 async def get_conversation(
     conversation_id: UUID, user: AuthenticatedUser, db: Db
 ) -> ConversationDetail:
-    return await _execute(
-        chat_service.get_conversation(db, user.id, conversation_id)
-    )
+    return await _execute(chat_service.get_conversation(db, user.id, conversation_id))
 
 
 @router.post(
@@ -68,12 +68,12 @@ async def send_message(
     user: AuthenticatedUser,
     db: Db,
 ) -> MessageSubmission:
-    return await _execute(
-        chat_service.send_message(db, user.id, conversation_id, body)
-    )
+    return await _execute(chat_service.send_message(db, user.id, conversation_id, body))
 
 
-@router.delete("/v1/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/v1/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_conversation(
     conversation_id: UUID, user: AuthenticatedUser, db: Db
 ) -> Response:
@@ -85,4 +85,6 @@ async def _execute(call: Awaitable[T]) -> T:
     try:
         return await call
     except ChatServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+        raise HTTPException(
+            status_code=error.status_code, detail=error.detail
+        ) from error

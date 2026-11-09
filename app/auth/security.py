@@ -1,9 +1,9 @@
 """Password, email-token, and access-token helpers."""
 
-from datetime import datetime, timedelta, timezone
 import hashlib
 import os
 import secrets
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import jwt
@@ -38,8 +38,13 @@ def create_access_token(user_id: UUID) -> str:
         raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
     now = datetime.now(timezone.utc)
     return jwt.encode(
-        {"sub": str(user_id), "type": "access", "iat": now,
-         "exp": now + ACCESS_TOKEN_TTL, "iss": JWT_ISSUER},
+        {
+            "sub": str(user_id),
+            "type": "access",
+            "iat": now,
+            "exp": now + ACCESS_TOKEN_TTL,
+            "iss": JWT_ISSUER,
+        },
         secret,
         algorithm="HS256",
     )

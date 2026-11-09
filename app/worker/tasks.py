@@ -1,16 +1,17 @@
 """Celery tasks for note processing and Qdrant cleanup."""
 
-from datetime import datetime, timedelta, timezone
 import os
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from celery import Task
-from qdrant_client import QdrantClient, models as qdrant_models
+from qdrant_client import QdrantClient
+from qdrant_client import models as qdrant_models
 from sqlalchemy import create_engine, delete, or_, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.infrastructure.ai.factory import AIProviderFactory
 from app.models import Note, NoteConnection, NoteProcessingJob, VectorCleanupRequest
@@ -37,7 +38,9 @@ def _qdrant_client() -> tuple[QdrantClient, str, int]:
     if not qdrant_url:
         raise RuntimeError("QDRANT_URL is required by the Celery worker")
     dimensions = int(os.getenv("GEMINI_EMBEDDING_DIMENSIONS", "768"))
-    client = QdrantClient(url=qdrant_url, api_key=os.getenv("QDRANT_API_KEY"), timeout=30)
+    client = QdrantClient(
+        url=qdrant_url, api_key=os.getenv("QDRANT_API_KEY"), timeout=30
+    )
     collection_name = os.getenv("QDRANT_NOTES_COLLECTION", "fikrah-notes")
     collections = {item.name for item in client.get_collections().collections}
     if collection_name not in collections:
@@ -92,13 +95,21 @@ def _refresh_note_connections(session: Session, note: Note) -> None:
     for _, candidate in related[:_MAX_CONNECTIONS_PER_NOTE]:
         values = {"source_note_id": note.id, "target_note_id": candidate.id}
         if dialect == "postgresql":
-            statement = pg_insert(table).values(**values).on_conflict_do_nothing(
-                index_elements=["source_note_id", "target_note_id"]
+            statement = (
+                pg_insert(table)
+                .values(**values)
+                .on_conflict_do_nothing(
+                    index_elements=["source_note_id", "target_note_id"]
+                )
             )
             session.execute(statement)
         elif dialect == "sqlite":
-            statement = sqlite_insert(table).values(**values).on_conflict_do_nothing(
-                index_elements=["source_note_id", "target_note_id"]
+            statement = (
+                sqlite_insert(table)
+                .values(**values)
+                .on_conflict_do_nothing(
+                    index_elements=["source_note_id", "target_note_id"]
+                )
             )
             session.execute(statement)
         else:
@@ -108,7 +119,7 @@ def _refresh_note_connections(session: Session, note: Note) -> None:
 class NoteProcessingTask(Task):
     """Persist terminal failure after Celery exhausts configured retries."""
 
-    def on_failure(self, exc, task_id, args, kwargs, einfo) -> None:  # noqa: ANN001
+    def on_failure(self, exc, task_id, args, kwargs, einfo) -> None:
         if not args:
             return
         try:
@@ -141,7 +152,7 @@ class NoteProcessingTask(Task):
     retry_jitter=True,
     retry_kwargs={"max_retries": settings.max_retries},
 )
-def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
+def process_note_job(self, job_id: str) -> None:
     engine, sessions = _session_factory()
     try:
         with sessions.begin() as session:
@@ -184,19 +195,25 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
                 note.content,
             )
 
-        note_id, user_id, project_id, revision, processing_generation, content = note_snapshot
+        note_id, user_id, project_id, revision, processing_generation, content = (
+            note_snapshot
+        )
         analysis = AIProviderFactory.create_text_model().analyze_note(content)
         embedding = AIProviderFactory.create_embedding_model().embed_note(content)
         client, collection, dimensions = _qdrant_client()
         try:
             if len(embedding) != dimensions:
-                raise ValueError(f"Expected {dimensions}-dimensional embedding, received {len(embedding)}")
+                raise ValueError(
+                    f"Expected {dimensions}-dimensional embedding, received {len(embedding)}"
+                )
             with sessions.begin() as session:
                 # Serialize relation refreshes per project so two notes finishing
                 # concurrently cannot both miss each other as still-processing.
                 if session.get_bind().dialect.name == "postgresql":
                     session.execute(
-                        text("SELECT pg_advisory_xact_lock(hashtextextended(:project_id, 0))"),
+                        text(
+                            "SELECT pg_advisory_xact_lock(hashtextextended(:project_id, 0))"
+                        ),
                         {"project_id": str(project_id)},
                     )
                 job = session.scalar(
@@ -204,7 +221,9 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
                     .where(NoteProcessingJob.id == UUID(job_id))
                     .with_for_update()
                 )
-                note = session.scalar(select(Note).where(Note.id == note_id).with_for_update())
+                note = session.scalar(
+                    select(Note).where(Note.id == note_id).with_for_update()
+                )
                 if job is None:
                     return
                 if (
@@ -218,16 +237,18 @@ def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
                 # cannot make an old vector the last write for this note ID.
                 client.upsert(
                     collection_name=collection,
-                    points=[qdrant_models.PointStruct(
-                        id=str(note_id),
-                        vector=embedding,
-                        payload={
-                            "user_id": str(user_id),
-                            "project_id": str(project_id),
-                            "revision": revision,
-                            "processing_generation": processing_generation,
-                        },
-                    )],
+                    points=[
+                        qdrant_models.PointStruct(
+                            id=str(note_id),
+                            vector=embedding,
+                            payload={
+                                "user_id": str(user_id),
+                                "project_id": str(project_id),
+                                "revision": revision,
+                                "processing_generation": processing_generation,
+                            },
+                        )
+                    ],
                     wait=True,
                 )
                 if note.title is None:
@@ -263,7 +284,9 @@ def delete_note_vector(cleanup_id: str) -> None:
                 wait=True,
             )
         with sessions.begin() as session:
-            request = session.get(VectorCleanupRequest, UUID(cleanup_id), with_for_update=True)
+            request = session.get(
+                VectorCleanupRequest, UUID(cleanup_id), with_for_update=True
+            )
             if request is not None and request.completed_at is None:
                 request.completed_at = datetime.now(timezone.utc)
     finally:
@@ -288,10 +311,15 @@ def dispatch_pending_work() -> None:
                         (NoteProcessingJob.status == "queued")
                         & (
                             NoteProcessingJob.dispatched_at.is_(None)
-                            | (NoteProcessingJob.dispatched_at < now - _STALE_DISPATCH_AFTER)
+                            | (
+                                NoteProcessingJob.dispatched_at
+                                < now - _STALE_DISPATCH_AFTER
+                            )
                         ),
                         (NoteProcessingJob.status == "processing")
-                        & (NoteProcessingJob.started_at < now - _STALE_PROCESSING_AFTER),
+                        & (
+                            NoteProcessingJob.started_at < now - _STALE_PROCESSING_AFTER
+                        ),
                     )
                 )
                 .limit(settings.dispatch_batch_size)
@@ -318,7 +346,8 @@ def dispatch_pending_work() -> None:
                     VectorCleanupRequest.completed_at.is_(None),
                     or_(
                         VectorCleanupRequest.dispatched_at.is_(None),
-                        VectorCleanupRequest.dispatched_at < now - _STALE_DISPATCH_AFTER,
+                        VectorCleanupRequest.dispatched_at
+                        < now - _STALE_DISPATCH_AFTER,
                     ),
                 )
                 .limit(settings.dispatch_batch_size)

@@ -12,13 +12,13 @@ FastAPI routes  →  feature application services  →  feature contracts / AI p
 Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, AI providers)
 ```
 
-Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and map application errors; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration.
+Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration.
 
 ## Module map
 
 | Module | HTTP | Application | Infrastructure boundary |
 |---|---|---|---|
-| Authentication | `app/auth/routes.py` | auth workflows and shared auth dependencies | SMTP/email delivery, Google token verification, PostgreSQL token/session records |
+| Authentication | `app/auth/routes.py` | `app/auth/service.py`, schemas, shared auth dependencies | SMTP and Google identity adapters under `app/infrastructure/`, PostgreSQL token/session records |
 | Projects | `app/projects/routes.py` | `ProjectService` | `ProjectRepository` and PostgreSQL |
 | Notes | `app/notes/routes.py` | `NoteService` | PostgreSQL, processing-job outbox, Celery worker |
 | Search | `app/search/routes.py` | `SemanticSearchService` | Gemini embeddings and Qdrant adapter |

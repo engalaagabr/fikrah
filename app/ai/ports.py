@@ -2,7 +2,12 @@
 
 from typing import Protocol
 
-from app.ai.contracts import ChatAnswer, ChatHistoryMessage, ChatNoteContext, NoteAnalysis
+from app.ai.contracts import (
+    ChatAnswer,
+    ChatHistoryMessage,
+    ChatNoteContext,
+    NoteAnalysis,
+)
 
 
 class TextModel(Protocol):

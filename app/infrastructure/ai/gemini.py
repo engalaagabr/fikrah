@@ -3,14 +3,25 @@
 from google import genai
 from google.genai import types
 
-from app.ai.contracts import ChatAnswer, ChatHistoryMessage, ChatNoteContext, NoteAnalysis
-from app.ai.prompts import CHAT_SYSTEM_PROMPT, NOTE_ANALYSIS_SYSTEM_PROMPT, build_chat_prompt
+from app.ai.contracts import (
+    ChatAnswer,
+    ChatHistoryMessage,
+    ChatNoteContext,
+    NoteAnalysis,
+)
+from app.ai.prompts import (
+    CHAT_SYSTEM_PROMPT,
+    NOTE_ANALYSIS_SYSTEM_PROMPT,
+    build_chat_prompt,
+)
 
 
 class GeminiTextModel:
     def __init__(self, api_key: str, model: str) -> None:
         self._model = model
-        self._client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
+        self._client = genai.Client(
+            api_key=api_key, http_options=types.HttpOptions(timeout=90_000)
+        )
 
     def analyze_note(self, content: str) -> NoteAnalysis:
         response = self._client.models.generate_content(
@@ -52,7 +63,9 @@ class GeminiEmbeddingModel:
     def __init__(self, api_key: str, model: str, dimensions: int) -> None:
         self._model = model
         self._dimensions = dimensions
-        self._client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=90_000))
+        self._client = genai.Client(
+            api_key=api_key, http_options=types.HttpOptions(timeout=90_000)
+        )
 
     def embed_note(self, content: str) -> list[float]:
         return self._embed(content, "RETRIEVAL_DOCUMENT")

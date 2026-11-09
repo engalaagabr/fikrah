@@ -14,7 +14,9 @@ class KnowledgeResourceNotFound(Exception):
 
 
 def _shared_concepts(left: list[str], right: list[str]) -> list[str]:
-    right_normalized = {concept.strip().casefold() for concept in right if concept.strip()}
+    right_normalized = {
+        concept.strip().casefold() for concept in right if concept.strip()
+    }
     shared: dict[str, str] = {}
     for concept in left:
         normalized = concept.strip().casefold()
@@ -27,7 +29,9 @@ class KnowledgeConnectionService:
     async def list_note_connections(
         self, db: AsyncSession, user_id: UUID, note_id: UUID
     ) -> list[RelatedNoteView]:
-        note = await db.scalar(select(Note).where(Note.id == note_id, Note.user_id == user_id))
+        note = await db.scalar(
+            select(Note).where(Note.id == note_id, Note.user_id == user_id)
+        )
         if note is None:
             raise KnowledgeResourceNotFound("Note")
         if note.processing_status != "completed":

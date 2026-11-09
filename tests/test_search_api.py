@@ -19,9 +19,21 @@ from app.models.base import Base
 async def search_api(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[
-    tuple[AsyncClient, async_sessionmaker[AsyncSession], UUID, UUID, UUID, UUID, UUID, UUID, str]
+    tuple[
+        AsyncClient,
+        async_sessionmaker[AsyncSession],
+        UUID,
+        UUID,
+        UUID,
+        UUID,
+        UUID,
+        UUID,
+        str,
+    ]
 ]:
-    monkeypatch.setenv("FIKRAH_JWT_SECRET", "search-test-secret-that-is-at-least-32-characters")
+    monkeypatch.setenv(
+        "FIKRAH_JWT_SECRET", "search-test-secret-that-is-at-least-32-characters"
+    )
     engine = create_async_engine(
         "sqlite+aiosqlite://",
         connect_args={"check_same_thread": False},
@@ -72,7 +84,12 @@ async def search_api(
         await session.commit()
         await session.refresh(current)
         owner_id, other_project_id, project_id = owner.id, other_project.id, project.id
-        current_id, stale_id, queued_id, private_id = current.id, stale.id, queued.id, private.id
+        current_id, stale_id, queued_id, private_id = (
+            current.id,
+            stale.id,
+            queued.id,
+            private.id,
+        )
 
     async def override_session() -> AsyncIterator[AsyncSession]:
         async with sessions() as session:
@@ -113,7 +130,18 @@ async def test_search_returns_only_authorized_current_completed_notes(
 ) -> None:
     from app.search import service
 
-    client, _, owner_id, _, project_id, current_id, stale_id, queued_id, private_id, token = search_api
+    (
+        client,
+        _,
+        owner_id,
+        _,
+        project_id,
+        current_id,
+        stale_id,
+        queued_id,
+        private_id,
+        token,
+    ) = search_api
     embedding = FakeEmbeddingModel()
     calls: list[tuple[object, ...]] = []
 

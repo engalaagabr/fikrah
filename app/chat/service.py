@@ -8,7 +8,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.contracts import ChatHistoryMessage, ChatNoteContext
-from app.infrastructure.ai.factory import AIProviderFactory
 from app.chat.schemas import (
     ConversationCreate,
     ConversationDetail,
@@ -18,9 +17,9 @@ from app.chat.schemas import (
     MessageView,
     SourceView,
 )
+from app.infrastructure.ai.factory import AIProviderFactory
 from app.models import ChatConversation, ChatMessage, ChatMessageSource, Note, Project
 from app.search.service import SearchProjectNotFound, SemanticSearchService
-from app.infrastructure.vector_store.qdrant import SearchUnavailableError
 
 CHAT_CONTEXT_LIMIT = 8
 CHAT_HISTORY_LIMIT = 12
@@ -40,7 +39,9 @@ class ChatService:
     async def _owned_project(
         self, db: AsyncSession, user_id: UUID, project_id: UUID, *, lock: bool = False
     ) -> Project:
-        query = select(Project).where(Project.id == project_id, Project.user_id == user_id)
+        query = select(Project).where(
+            Project.id == project_id, Project.user_id == user_id
+        )
         if lock:
             query = query.with_for_update()
         project = await db.scalar(query)
@@ -49,7 +50,12 @@ class ChatService:
         return project
 
     async def _owned_conversation(
-        self, db: AsyncSession, user_id: UUID, conversation_id: UUID, *, lock: bool = False
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        conversation_id: UUID,
+        *,
+        lock: bool = False,
     ) -> ChatConversation:
         query = select(ChatConversation).where(
             ChatConversation.id == conversation_id,
@@ -62,13 +68,17 @@ class ChatService:
             raise ChatServiceError(404, "Conversation not found")
         return conversation
 
-    async def _message_views(self, db: AsyncSession, messages: list[ChatMessage]) -> list[MessageView]:
+    async def _message_views(
+        self, db: AsyncSession, messages: list[ChatMessage]
+    ) -> list[MessageView]:
         if not messages:
             return []
         rows = await db.execute(
             select(ChatMessageSource.message_id, Note.id, Note.title)
             .join(Note, Note.id == ChatMessageSource.note_id)
-            .where(ChatMessageSource.message_id.in_([message.id for message in messages]))
+            .where(
+                ChatMessageSource.message_id.in_([message.id for message in messages])
+            )
         )
         sources_by_message: dict[UUID, list[SourceView]] = {}
         for message_id, note_id, title in rows:
@@ -137,7 +147,9 @@ class ChatService:
         conversation_id: UUID,
         body: MessageCreate,
     ) -> MessageSubmission:
-        conversation = await self._owned_conversation(db, user_id, conversation_id, lock=True)
+        conversation = await self._owned_conversation(
+            db, user_id, conversation_id, lock=True
+        )
         history_desc = list(
             await db.scalars(
                 select(ChatMessage)
@@ -185,7 +197,9 @@ class ChatService:
         except Exception as error:
             raise ChatServiceError(503, "AI chat is temporarily unavailable") from error
 
-        conversation = await self._owned_conversation(db, user_id, conversation_id, lock=True)
+        conversation = await self._owned_conversation(
+            db, user_id, conversation_id, lock=True
+        )
         latest_message_id = await db.scalar(
             select(ChatMessage.id)
             .where(ChatMessage.conversation_id == conversation.id)
@@ -226,15 +240,21 @@ class ChatService:
                 for note in source_notes
                 if note.revision == matching_revisions.get(note.id)
             }
-            valid_sources = [note_id for note_id in valid_sources if note_id in current_source_ids]
+            valid_sources = [
+                note_id for note_id in valid_sources if note_id in current_source_ids
+            ]
 
         supported = answer.supported and bool(valid_sources)
         answer_content = answer.answer.strip()
         if not supported and answer.supported:
-            answer_content = "I couldn't find an answer supported by your project notes."
+            answer_content = (
+                "I couldn't find an answer supported by your project notes."
+            )
         elif not answer_content:
             supported = False
-            answer_content = "I couldn't find an answer supported by your project notes."
+            answer_content = (
+                "I couldn't find an answer supported by your project notes."
+            )
 
         now = datetime.now(timezone.utc)
         user_message = ChatMessage(
@@ -276,12 +296,16 @@ class ChatService:
     async def delete_conversation(
         self, db: AsyncSession, user_id: UUID, conversation_id: UUID
     ) -> None:
-        conversation = await self._owned_conversation(db, user_id, conversation_id, lock=True)
+        conversation = await self._owned_conversation(
+            db, user_id, conversation_id, lock=True
+        )
         message_ids = select(ChatMessage.id).where(
             ChatMessage.conversation_id == conversation.id
         )
         await db.execute(
-            delete(ChatMessageSource).where(ChatMessageSource.message_id.in_(message_ids))
+            delete(ChatMessageSource).where(
+                ChatMessageSource.message_id.in_(message_ids)
+            )
         )
         await db.execute(
             delete(ChatMessage).where(ChatMessage.conversation_id == conversation.id)

@@ -1,8 +1,8 @@
 """Validated environment settings for durable worker dispatch and retries."""
 
-from dataclasses import dataclass
 import os
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,10 +31,20 @@ class WorkerSettings:
 
         return cls(
             max_retries=positive_int("FIKRAH_CELERY_MAX_RETRIES", 3),
-            retry_backoff_seconds=positive_int("FIKRAH_CELERY_RETRY_BACKOFF_SECONDS", 5),
-            stale_dispatch_after_seconds=positive_int("FIKRAH_DISPATCH_STALE_AFTER_SECONDS", 300),
-            stale_processing_after_seconds=positive_int("FIKRAH_PROCESSING_STALE_AFTER_SECONDS", 900),
-            dispatch_interval_seconds=positive_int("FIKRAH_DISPATCH_INTERVAL_SECONDS", 30),
+            retry_backoff_seconds=positive_int(
+                "FIKRAH_CELERY_RETRY_BACKOFF_SECONDS", 5
+            ),
+            stale_dispatch_after_seconds=positive_int(
+                "FIKRAH_DISPATCH_STALE_AFTER_SECONDS", 300
+            ),
+            stale_processing_after_seconds=positive_int(
+                "FIKRAH_PROCESSING_STALE_AFTER_SECONDS", 900
+            ),
+            dispatch_interval_seconds=positive_int(
+                "FIKRAH_DISPATCH_INTERVAL_SECONDS", 30
+            ),
             dispatch_batch_size=positive_int("FIKRAH_DISPATCH_BATCH_SIZE", 100),
-            broker_visibility_timeout_seconds=positive_int("FIKRAH_CELERY_VISIBILITY_TIMEOUT_SECONDS", 3600),
+            broker_visibility_timeout_seconds=positive_int(
+                "FIKRAH_CELERY_VISIBILITY_TIMEOUT_SECONDS", 3600
+            ),
         )

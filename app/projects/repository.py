@@ -29,7 +29,9 @@ class ProjectRepository:
     async def find_owned(
         self, db: AsyncSession, user_id: UUID, project_id: UUID, *, lock: bool = False
     ) -> Project | None:
-        query = select(Project).where(Project.id == project_id, Project.user_id == user_id)
+        query = select(Project).where(
+            Project.id == project_id, Project.user_id == user_id
+        )
         if lock:
             query = query.with_for_update()
         return await db.scalar(query)
@@ -47,7 +49,9 @@ class ProjectRepository:
         return project
 
     async def delete_with_owned_data(self, db: AsyncSession, project: Project) -> None:
-        note_ids = list(await db.scalars(select(Note.id).where(Note.project_id == project.id)))
+        note_ids = list(
+            await db.scalars(select(Note.id).where(Note.project_id == project.id))
+        )
         db.add_all(VectorCleanupRequest(note_id=note_id) for note_id in note_ids)
 
         conversation_ids = select(ChatConversation.id).where(
@@ -57,7 +61,9 @@ class ProjectRepository:
             ChatMessage.conversation_id.in_(conversation_ids)
         )
         await db.execute(
-            delete(ChatMessageSource).where(ChatMessageSource.message_id.in_(message_ids))
+            delete(ChatMessageSource).where(
+                ChatMessageSource.message_id.in_(message_ids)
+            )
         )
         await db.execute(
             delete(ChatMessage).where(ChatMessage.conversation_id.in_(conversation_ids))
@@ -73,7 +79,9 @@ class ProjectRepository:
                     | NoteConnection.target_note_id.in_(note_ids)
                 )
             )
-            await db.execute(delete(NoteProcessingJob).where(NoteProcessingJob.note_id.in_(note_ids)))
+            await db.execute(
+                delete(NoteProcessingJob).where(NoteProcessingJob.note_id.in_(note_ids))
+            )
             await db.execute(delete(Note).where(Note.id.in_(note_ids)))
 
         await db.delete(project)

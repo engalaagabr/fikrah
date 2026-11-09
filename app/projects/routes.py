@@ -10,7 +10,11 @@ from app.auth.dependencies import current_user
 from app.database import get_db_session
 from app.models import User
 from app.projects.schemas import ProjectInput, ProjectView
-from app.projects.service import GeneralProjectProtected, ProjectNotFound, ProjectService
+from app.projects.service import (
+    GeneralProjectProtected,
+    ProjectNotFound,
+    ProjectService,
+)
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]
@@ -20,7 +24,9 @@ project_service = ProjectService()
 
 def _translate_service_error(error: Exception) -> HTTPException:
     if isinstance(error, ProjectNotFound):
-        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
     if isinstance(error, GeneralProjectProtected):
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -36,7 +42,9 @@ async def list_projects(user: AuthenticatedUser, db: Db) -> list[ProjectView]:
 
 
 @router.post("", response_model=ProjectView, status_code=status.HTTP_201_CREATED)
-async def create_project(body: ProjectInput, user: AuthenticatedUser, db: Db) -> ProjectView:
+async def create_project(
+    body: ProjectInput, user: AuthenticatedUser, db: Db
+) -> ProjectView:
     project = await project_service.create_project(db, user.id, body.name)
     return ProjectView.model_validate(project)
 
@@ -55,7 +63,9 @@ async def rename_project(
     project_id: UUID, body: ProjectInput, user: AuthenticatedUser, db: Db
 ) -> ProjectView:
     try:
-        project = await project_service.rename_project(db, user.id, project_id, body.name)
+        project = await project_service.rename_project(
+            db, user.id, project_id, body.name
+        )
     except ProjectNotFound as error:
         raise _translate_service_error(error) from error
     return ProjectView.model_validate(project)

@@ -2,7 +2,7 @@ from email.message import EmailMessage
 
 import pytest
 
-from app.auth.email import send_action_email
+from app.infrastructure.email.smtp import send_action_email
 
 
 @pytest.mark.parametrize(
@@ -21,14 +21,16 @@ async def test_action_email_contains_plain_text_and_html(
 ) -> None:
     monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
     monkeypatch.setenv("SMTP_FROM", "FIKRAH <noreply@example.test>")
-    monkeypatch.setenv("EMAIL_ACTION_BASE_URL", "https://app.example.test/action?source=email")
+    monkeypatch.setenv(
+        "EMAIL_ACTION_BASE_URL", "https://app.example.test/action?source=email"
+    )
     monkeypatch.setenv("SMTP_START_TLS", "false")
     sent: list[EmailMessage] = []
 
     async def capture_send(message: EmailMessage, **_kwargs: object) -> None:
         sent.append(message)
 
-    monkeypatch.setattr("app.auth.email.aiosmtplib.send", capture_send)
+    monkeypatch.setattr("app.infrastructure.email.smtp.aiosmtplib.send", capture_send)
 
     await send_action_email("person@example.test", "safe-token", purpose)
 
@@ -43,14 +45,18 @@ async def test_action_email_contains_plain_text_and_html(
 
 
 @pytest.mark.asyncio
-async def test_action_email_rejects_unknown_purpose(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_action_email_rejects_unknown_purpose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with pytest.raises(ValueError, match="Unsupported email action purpose"):
         await send_action_email("person@example.test", "token", "login")
 
 
 @pytest.mark.asyncio
-async def test_welcome_email_contains_plain_text_and_html(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.auth.email import send_welcome_email
+async def test_welcome_email_contains_plain_text_and_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.infrastructure.email.smtp import send_welcome_email
 
     monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
     monkeypatch.setenv("SMTP_FROM", "FIKRAH <noreply@example.test>")
@@ -59,7 +65,7 @@ async def test_welcome_email_contains_plain_text_and_html(monkeypatch: pytest.Mo
     async def capture_send(message: EmailMessage, **_kwargs: object) -> None:
         sent.append(message)
 
-    monkeypatch.setattr("app.auth.email.aiosmtplib.send", capture_send)
+    monkeypatch.setattr("app.infrastructure.email.smtp.aiosmtplib.send", capture_send)
 
     await send_welcome_email("person@example.test")
 

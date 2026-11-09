@@ -5,7 +5,9 @@ import app.infrastructure.ai.gemini as gemini_adapter
 from app.infrastructure.ai.factory import AIProviderFactory
 
 
-def test_factory_selects_deepseek_or_gemini_text_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_factory_selects_deepseek_or_gemini_text_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     created: list[tuple[str, ...]] = []
 
     class FakeProvider:
@@ -33,7 +35,9 @@ def test_factory_selects_deepseek_or_gemini_text_provider(monkeypatch: pytest.Mo
     ]
 
 
-def test_factory_requires_selected_provider_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_factory_requires_selected_provider_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.setenv("AI_TEXT_PROVIDER", "deepseek")
     with pytest.raises(RuntimeError, match="DEEPSEEK_API_KEY"):
@@ -44,7 +48,9 @@ def test_factory_requires_selected_provider_credentials(monkeypatch: pytest.Monk
         AIProviderFactory.create_text_model()
 
 
-def test_embedding_factory_uses_gemini_and_validates_dimensions(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_embedding_factory_uses_gemini_and_validates_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     created: list[tuple[str, ...]] = []
 
     class FakeEmbeddingProvider:
@@ -72,7 +78,11 @@ def test_gemini_embedding_uses_document_and_query_retrieval_tasks(
     class Models:
         def embed_content(self, *, model: str, contents: str, config: object) -> object:
             task_types.append(config.task_type)
-            return type("Response", (), {"embeddings": [type("Embedding", (), {"values": [0.1]})()]})()
+            return type(
+                "Response",
+                (),
+                {"embeddings": [type("Embedding", (), {"values": [0.1]})()]},
+            )()
 
     class Client:
         def __init__(self, **kwargs: object) -> None:

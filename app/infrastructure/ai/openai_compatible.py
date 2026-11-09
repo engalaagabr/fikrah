@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from openai import OpenAI
 
-from app.ai.contracts import ChatAnswer, ChatHistoryMessage, ChatNoteContext, NoteAnalysis
+from app.ai.contracts import (
+    ChatAnswer,
+    ChatHistoryMessage,
+    ChatNoteContext,
+    NoteAnalysis,
+)
 from app.ai.prompts import (
     CHAT_SYSTEM_PROMPT,
     NOTE_ANALYSIS_SYSTEM_PROMPT,
@@ -13,7 +18,9 @@ from app.ai.prompts import (
 
 
 class OpenAICompatibleTextModel:
-    def __init__(self, api_key: str, base_url: str, model: str, provider_name: str) -> None:
+    def __init__(
+        self, api_key: str, base_url: str, model: str, provider_name: str
+    ) -> None:
         self._model = model
         self._provider_name = provider_name
         self._client = OpenAI(api_key=api_key, base_url=base_url, timeout=90)
@@ -22,7 +29,10 @@ class OpenAICompatibleTextModel:
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
-                {"role": "system", "content": NOTE_ANALYSIS_SYSTEM_PROMPT + " Output valid JSON."},
+                {
+                    "role": "system",
+                    "content": NOTE_ANALYSIS_SYSTEM_PROMPT + " Output valid JSON.",
+                },
                 {"role": "user", "content": content},
             ],
             response_format={"type": "json_object"},
@@ -42,8 +52,14 @@ class OpenAICompatibleTextModel:
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
-                {"role": "system", "content": CHAT_SYSTEM_PROMPT + " Output valid JSON."},
-                {"role": "user", "content": build_chat_prompt(question, notes, history)},
+                {
+                    "role": "system",
+                    "content": CHAT_SYSTEM_PROMPT + " Output valid JSON.",
+                },
+                {
+                    "role": "user",
+                    "content": build_chat_prompt(question, notes, history),
+                },
             ],
             response_format={"type": "json_object"},
             max_tokens=3000,

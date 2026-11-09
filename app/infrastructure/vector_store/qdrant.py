@@ -21,7 +21,9 @@ def search_note_vectors(
         raise SearchUnavailableError("QDRANT_URL is required for semantic search")
 
     collection_name = os.getenv("QDRANT_NOTES_COLLECTION", "fikrah-notes")
-    client = QdrantClient(url=qdrant_url, api_key=os.getenv("QDRANT_API_KEY"), timeout=30)
+    client = QdrantClient(
+        url=qdrant_url, api_key=os.getenv("QDRANT_API_KEY"), timeout=30
+    )
     try:
         collections = {item.name for item in client.get_collections().collections}
         if collection_name not in collections:
