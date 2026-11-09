@@ -14,10 +14,10 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.ai.providers import AIProviderFactory
 from app.models import Note, NoteConnection, NoteProcessingJob, VectorCleanupRequest
-from app.worker.celery_app import celery_app
+from app.worker.celery_app import celery_app, settings
 
-_STALE_DISPATCH_AFTER = timedelta(minutes=5)
-_STALE_PROCESSING_AFTER = timedelta(minutes=15)
+_STALE_DISPATCH_AFTER = timedelta(seconds=settings.stale_dispatch_after_seconds)
+_STALE_PROCESSING_AFTER = timedelta(seconds=settings.stale_processing_after_seconds)
 _MAX_CONNECTIONS_PER_NOTE = 10
 
 
@@ -137,9 +137,9 @@ class NoteProcessingTask(Task):
     name="app.worker.tasks.process_note_job",
     acks_late=True,
     autoretry_for=(Exception,),
-    retry_backoff=5,
+    retry_backoff=settings.retry_backoff_seconds,
     retry_jitter=True,
-    retry_kwargs={"max_retries": 3},
+    retry_kwargs={"max_retries": settings.max_retries},
 )
 def process_note_job(self, job_id: str) -> None:  # noqa: ANN001
     engine, sessions = _session_factory()
@@ -294,7 +294,7 @@ def dispatch_pending_work() -> None:
                         & (NoteProcessingJob.started_at < now - _STALE_PROCESSING_AFTER),
                     )
                 )
-                .limit(100)
+                .limit(settings.dispatch_batch_size)
                 .with_for_update(skip_locked=True)
             ).all()
             for job in jobs:
@@ -321,7 +321,7 @@ def dispatch_pending_work() -> None:
                         VectorCleanupRequest.dispatched_at < now - _STALE_DISPATCH_AFTER,
                     ),
                 )
-                .limit(100)
+                .limit(settings.dispatch_batch_size)
                 .with_for_update(skip_locked=True)
             ).all()
             for request in cleanup_rows:
