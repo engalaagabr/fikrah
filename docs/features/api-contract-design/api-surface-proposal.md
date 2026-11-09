@@ -1,6 +1,6 @@
 # Mobile API Surface and Remaining Proposals
 
-**Status: Partial.** Authentication, project management, note processing, note refinement, and the approved project-scoped semantic search contract are implemented. The AI provider and worker architecture is documented in `docs/features/note-processing/ai-provider-factory.md`. Knowledge connections, graph, and chat routes remain proposals.
+**Status: Partial.** Authentication, project management, note processing, note refinement, project-scoped semantic search, and project knowledge chat are implemented. The AI provider and worker architecture is documented in `docs/features/note-processing/ai-provider-factory.md`. Knowledge connections and graph routes remain proposals until their feature PR is merged.
 
 ## Contract-wide rules
 
@@ -64,24 +64,24 @@ The proposal must use the same language as the original note. A result produced 
 
 The mobile app's ability to create, edit, or remove individual connections has not been specified; this proposal exposes AI-generated connections as read-only.
 
-## Semantic search
+## Semantic search — Implemented
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
 | `POST /v1/projects/{project_id}/search` | Find relevant notes in the selected project by meaning and context instead of exact keywords. | When the user submits a search query while a project is selected. | Project ID in the path, non-blank query text (max 4,000 characters), and optional `limit` (default 10, range 1–50). | Ordered matching notes with ID, title, content, relevance score, and update timestamp; empty array when no current completed vectors match. PostgreSQL validates user/project ownership, completion, and indexed revision before returning any result. |
 
-## Chat with project knowledge
+## Chat with project knowledge — Implemented
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
-| `GET /v1/projects/{project_id}/conversations` | List a user's conversations in a project. | When opening the chat history for a project. | Project ID and pagination. | Conversation IDs, titles, and timestamps. |
-| `POST /v1/projects/{project_id}/conversations` | Start a conversation scoped to the selected project. | When the user starts a new chat. | Optional conversation title (generation behavior open). | Created project-scoped conversation. |
-| `GET /v1/conversations/{conversation_id}` | Load conversation history. | When opening a prior conversation. | Conversation ID and pagination/cursor. | Messages with roles, content, citations/source note IDs, and timestamps. |
-| `POST /v1/conversations/{conversation_id}/messages` | Ask a question and receive an answer grounded in the conversation's project notes. | When the user sends a chat message. | User message text. | Complete assistant response in one response, source note references, and an explicit unsupported-answer outcome when project notes do not support an answer. |
-| `DELETE /v1/conversations/{conversation_id}` | Delete a conversation and its chat history. | When the user deletes a conversation. | Conversation ID. | Deletion result. |
+| `GET /v1/projects/{project_id}/conversations` | List a user's conversations in a project. | When opening or refreshing project chat history. | Project ID; no pagination initially. | Conversation IDs, optional titles, and timestamps ordered by most recently updated. |
+| `POST /v1/projects/{project_id}/conversations` | Start a conversation scoped to the selected project. | When the user starts a new chat. | Optional user-provided title. If absent, the first question becomes the title, limited to 120 characters. | Created project-scoped conversation; title is null until its first message if no title was supplied. |
+| `GET /v1/conversations/{conversation_id}` | Load conversation history. | When opening a prior conversation. | Conversation ID; no pagination initially. | Full ordered messages with roles, content, support status, cited note IDs/titles, and timestamps. |
+| `POST /v1/conversations/{conversation_id}/messages` | Ask a question and receive an answer grounded in the selected project's notes. | When the user sends a chat message. | Non-blank question text up to 4,000 characters. | Complete user and assistant messages in one response, with `supported` status and validated source note references. When notes do not support an answer, the assistant clearly says so and returns no sources. |
+| `DELETE /v1/conversations/{conversation_id}` | Delete a conversation and its chat history. | When the user deletes a conversation. | Conversation ID. | `204`; project deletion also removes its conversations, and note deletion removes citation records for that note. |
 
-Conversation ownership, note-context scoping, and chat history must remain isolated per user. The assistant must clearly say when it cannot find a supported answer in the selected project's notes.
+Conversation ownership, note-context scoping, and chat history are isolated per user. Retrieval uses up to eight current, completed note vectors from the selected project, verified against PostgreSQL. The latest twelve messages provide follow-up context but are not evidence. Answers use the same language as the question and do not stream. See [`docs/features/project-knowledge-chat/overview.md`](../project-knowledge-chat/overview.md).
 
 ## Decisions needed before finalizing contracts
 
-Queue recovery settings and the knowledge graph and chat API schemas remain open in their related feature documents. Those proposed routes are not approved for implementation yet.
+Queue recovery settings and the knowledge connection and graph contracts remain open in their related feature documents. Those proposed routes are not approved for implementation yet.
