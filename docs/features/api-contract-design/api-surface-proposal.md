@@ -17,12 +17,12 @@
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
 | `POST /v1/auth/register` | Create an email/password account and its protected `General` project, then send an email-verification link. | When a user signs up with email. | Email and password. | Account identity and verification-required state; no authenticated session before verification. |
-| `POST /v1/auth/email-verifications/confirm` | Verify ownership of the account email. | When the user follows the verification link. | Single-use verification token. | Updated account verification status. |
-| `POST /v1/auth/email-verifications` | Send or resend an email-verification link. | After registration or when the user requests another verification email. | Email or authenticated account context; exact behavior is open. | Generic accepted response and, if useful, resend timing metadata. |
+| `POST /v1/auth/email-verifications/confirm` | Verify ownership of the account email. | When the user follows the verification link. | Single-use verification token that expires after 24 hours. | Updated account verification status. |
+| `POST /v1/auth/email-verifications` | Send or resend an email-verification link. | After registration or when the user requests another verification email. | Email or authenticated account context. | Generic accepted response and, if useful, resend timing metadata. SMTP sends have a 60-second cooldown and a maximum of five per email address per hour. |
 | `POST /v1/auth/login` | Authenticate an existing email/password account. | At email/password sign-in. | Email and password. | Account identity, a 15-minute JWT access token, and a 30-day opaque refresh token. Unverified email accounts cannot sign in. |
 | `POST /v1/auth/google` | Authenticate or create an account using Google. | After the mobile Google sign-in flow obtains a Google ID token. | Google ID token from the mobile client; the Backend verifies it and automatically links a matching existing account only when Google's email is verified. | Account identity and the application's access and refresh tokens. |
-| `POST /v1/auth/password-reset-requests` | Start password recovery without disclosing whether an email has an account. | When a user requests password recovery. | Email address. | Generic accepted response; reset-link expiry and resend limits are open. |
-| `POST /v1/auth/password-reset-completions` | Set a new password after the user proves control of the recovery link. | When the user submits a new password from the recovery flow. | Single-use recovery token and new password. | Confirmation that the password was changed. |
+| `POST /v1/auth/password-reset-requests` | Start password recovery without disclosing whether an email has an account. | When a user requests password recovery. | Email address. | Generic accepted response. SMTP sends have a 60-second cooldown and a maximum of five per email address per hour. |
+| `POST /v1/auth/password-reset-completions` | Set a new password after the user proves control of the recovery link. | When the user submits a new password from the recovery flow. | Single-use recovery token that expires after one hour, and new password. | Confirmation that the password was changed. |
 | `POST /v1/auth/refresh` | Renew an expired access credential without asking the user to sign in again. | When the mobile client receives an expired/near-expiry access credential. | Opaque refresh token. | New 15-minute JWT access token and a newly rotated 30-day opaque refresh token. The previous refresh token is revoked. |
 | `POST /v1/auth/logout` | End the current authenticated session. | When the user signs out. | Current opaque refresh token. | Confirmation that the refresh token was revoked. |
 | `GET /v1/users/me` | Return the current account identity needed for account state and profile display. | On app startup or when account state must be refreshed. | No body; authenticated context identifies the account. | Account ID, email, and supported profile fields. |
@@ -91,6 +91,6 @@ Conversation ownership, note-context scoping, and chat history must remain isola
 
 ## Decisions needed before finalizing contracts
 
-1. **Email-link details:** What mobile app/deep-link URL should verification/reset emails open, and what token expiry/resend limits should apply?
+1. **Email-link destination:** What HTTPS URL or universal link should verification/reset emails open? It will be supplied through environment configuration.
 
 Do not implement these proposed routes or infer answers to these questions until the corresponding contracts are approved.

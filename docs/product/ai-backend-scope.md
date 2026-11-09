@@ -42,7 +42,7 @@ Every user has an independent account. A user must only have access to their own
 - Conversations.
 - Chat history.
 
-The initial sign-in methods are email and password, and Google sign-in. Email verification and password recovery are required in the first release, using email links sent through configurable SMTP; email/password users cannot sign in before verifying their address. For Google sign-in, the mobile application sends a Google ID token to the Backend for verification. The Backend issues a 15-minute JWT access token and a 30-day opaque refresh token, rotates refresh tokens, and supports revocation through PostgreSQL. A verified Google email matching an existing account is linked to that account automatically.
+The initial sign-in methods are email and password, and Google sign-in. Email verification and password recovery are required in the first release, using email links sent through configurable SMTP; email/password users cannot sign in before verifying their address. Verification links expire after 24 hours, password reset links after one hour, and both are single-use. Email sends have a 60-second cooldown and a maximum of five messages per email address per hour. The HTTPS base URL for links is supplied through environment configuration. For Google sign-in, the mobile application sends a Google ID token to the Backend for verification. The Backend issues a 15-minute JWT access token and a 30-day opaque refresh token, rotates refresh tokens, and supports revocation through PostgreSQL. A verified Google email matching an existing account is linked to that account automatically.
 
 Authentication, user accounts, authorization, and enforcement of this data isolation are Backend responsibilities.
 
@@ -88,7 +88,4 @@ Confirm these behaviors with the user before treating them as requirements or de
 - How users edit a proposed refinement before accepting or rejecting it.
 - Which languages the application must understand and use for notes, transcriptions, and search.
 - Which language chat should use when the user's question and the relevant notes have different languages, or the project contains notes in multiple languages.
-- Whether an account must verify its email before it can sign in, and whether verification uses a link or a code.
-- The email-verification resend behavior and password-reset token delivery/expiry behavior.
-- The access/refresh token format, lifetimes, rotation, and revocation behavior.
 - The detailed mobile-to-Backend workflows and endpoint requirements for each capability.
