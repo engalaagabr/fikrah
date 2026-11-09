@@ -55,14 +55,14 @@ AI generates a title during processing only when the user did not supply one. Wh
 
 The proposal must use the same language as the original note. A result produced for an older note revision or processing generation must not overwrite a newer result. Accepting replaces the note text and starts processing automatically. Rejection clears the proposal while retaining the original note text. Regeneration clears the current proposal, then asynchronously generates another proposal for the unchanged note text. Each action includes the `processing_generation` returned in the note representation; stale actions return `409` rather than acting on a proposal the user may not have seen. See [`docs/features/note-refinement-actions/overview.md`](../note-refinement-actions/overview.md).
 
-## Knowledge connections and graph
+## Knowledge connections and graph — Implemented
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
-| `GET /v1/notes/{note_id}/connections` | Retrieve notes connected to the current note for a related-notes view. | When opening a note's connections panel. | Note ID and optional page size. | Connection IDs, labels/strength if exposed, and minimal connected-note summaries, limited to the same user and project. |
-| `GET /v1/projects/{project_id}/knowledge-graph` | Retrieve graph nodes and edges for project visualization. | When opening or refreshing the project graph. | Project ID plus optional viewport/filter parameters (open). | Note nodes and knowledge-link edges for that project. |
+| `GET /v1/notes/{note_id}/connections` | Retrieve notes connected to the current note for a related-notes view. | When opening a note's connections panel. | Note ID in the path. | Related note ID, title, shared concepts, and update timestamp; limited to the authenticated user's project. |
+| `GET /v1/projects/{project_id}/knowledge-graph` | Retrieve graph nodes and edges for project visualization. | When opening or refreshing the project graph. | Project ID in the path. | All completed project note nodes and shared-concept edges; no pagination or viewport filtering initially. |
 
-The mobile app's ability to create, edit, or remove individual connections has not been specified; this proposal exposes AI-generated connections as read-only.
+Connections are generated after processing when at least one normalized concept matches a completed note in the same user-owned project. The worker stores up to ten strongest directed suggestions per processing run; retrieval treats links as undirected. Individual connection create/edit/delete operations are not exposed. See [`docs/features/knowledge-connections/overview.md`](../knowledge-connections/overview.md).
 
 ## Semantic search
 
