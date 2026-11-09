@@ -12,8 +12,9 @@ from app.models.auth import (
     User,
     VectorCleanupRequest,
 )
+from app.models.chat import ChatConversation, ChatMessage, ChatMessageSource
 
 __all__ = [
-    "EmailActionToken", "EmailSendAttempt", "Note", "NoteConnection", "NoteIdempotencyKey",
+    "ChatConversation", "ChatMessage", "ChatMessageSource", "EmailActionToken", "EmailSendAttempt", "Note", "NoteConnection", "NoteIdempotencyKey",
     "NoteProcessingJob", "Project", "RefreshSession", "User", "VectorCleanupRequest",
 ]

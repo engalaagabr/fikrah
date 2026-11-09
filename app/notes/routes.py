@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.routes import current_user
 from app.database import get_db_session
 from app.models import (
+    ChatMessageSource,
     Note,
     NoteConnection,
     NoteIdempotencyKey,
@@ -324,6 +325,7 @@ async def delete_note(note_id: UUID, user: AuthenticatedUser, db: Db) -> Respons
             (NoteConnection.source_note_id == note.id) | (NoteConnection.target_note_id == note.id)
         )
     )
+    await db.execute(delete(ChatMessageSource).where(ChatMessageSource.note_id == note.id))
     await db.execute(delete(NoteProcessingJob).where(NoteProcessingJob.note_id == note.id))
     await db.delete(note)
     await db.commit()
