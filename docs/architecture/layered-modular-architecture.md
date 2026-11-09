@@ -23,7 +23,7 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 | Notes | `app/notes/routes.py` | `NoteService` | PostgreSQL, processing-job outbox, Celery worker |
 | Search | `app/search/routes.py` | `SemanticSearchService` | Gemini embeddings and Qdrant adapter |
 | Connections | `app/connections/routes.py` | `KnowledgeConnectionService` | PostgreSQL connection records |
-| Chat | `app/chat/routes.py` | `ChatService` | Search use case, configured text-model adapter, PostgreSQL history |
+| Chat | `app/chat/routes.py` | `ChatService`, commands and results in `app/chat/contracts.py` | Search use case, configured text-model adapter, PostgreSQL history |
 | AI | — | contracts, provider ports, prompt definitions | `app/infrastructure/ai/` adapters and provider factory |
 | Worker | — | asynchronous processing entry points | Celery/Redis, PostgreSQL, AI and Qdrant adapters |
 
