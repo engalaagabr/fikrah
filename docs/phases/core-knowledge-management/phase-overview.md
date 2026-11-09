@@ -10,7 +10,7 @@ Give signed-in users a project container for organizing their personal notes and
 - Protected `General` project behavior and per-user project isolation.
 - Note storage and lifecycle APIs with user isolation, idempotent capture, processing intents, and deletion cleanup.
 - Initial note analysis, including title generation, rewrite proposals, concepts, and Qdrant embeddings.
-- Knowledge connections, project clusters, semantic search, graph retrieval, and chat in later features.
+- Knowledge connections, project clusters, semantic search, graph retrieval, and chat remain later features with their own approved contracts.
 
 ## Completion Criteria
 

@@ -145,6 +145,40 @@ def test_stale_note_job_does_not_call_ai_or_overwrite_new_revision(
     engine.dispose()
 
 
+def test_stale_processing_generation_does_not_overwrite_new_refinement_request(
+    note_job_db, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.worker import tasks
+
+    database_path, job_id, note_id = note_job_db
+    update_engine = create_engine(f"sqlite:///{database_path}")
+    with Session(update_engine) as session:
+        note = session.get(Note, note_id)
+        assert note is not None
+        note.processing_generation = 2
+        session.commit()
+    update_engine.dispose()
+
+    class FailIfCalled:
+        def analyze_note(self, content: str) -> NoteAnalysis:
+            raise AssertionError("stale processing generation must not call AI")
+
+    monkeypatch.setattr(tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled())
+    result = process_note_job.apply(args=[str(job_id)], task_id="worker-task-old-generation", throw=True)
+    assert result.successful()
+
+    engine = create_engine(f"sqlite:///{database_path}")
+    with Session(engine) as session:
+        note = session.get(Note, note_id)
+        job = session.get(NoteProcessingJob, job_id)
+        assert note is not None and job is not None
+        assert note.revision == 1
+        assert note.processing_generation == 2
+        assert note.processing_status == "queued"
+        assert job.status == "stale"
+    engine.dispose()
+
+
 def test_dispatcher_publishes_durable_pending_note_job(note_job_db, monkeypatch: pytest.MonkeyPatch) -> None:
     from app.worker import tasks
 

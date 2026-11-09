@@ -32,28 +32,28 @@ The user approved the project routes below for implementation. The rest of this 
 
 ## Notes and processing — Contract Accepted
 
-The user approved the routes and initial processing states below. List pagination is deferred. Note responses also contain `concepts` and an optional `refinement_proposal` after processing completes.
+The user approved the routes and initial processing states below. List pagination is deferred. Note responses also contain `concepts`, an optional `refinement_proposal`, and `processing_generation` for safe processing/proposal actions.
 
 | Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
 | `POST /v1/projects/{project_id}/notes` | Save a note and enqueue Backend-owned AI processing. | After the user saves text or locally extracted audio/PDF text. | Plain text, optional user title, and an `Idempotency-Key` header (1–128 characters). Reuse the same key for retries of the same capture. No file. | `201` with Backend-generated note ID, project ID, optional title, text, revision, `queued` state, and timestamps. Reusing a key with a different request returns `409`; replaying a creation whose note has since been deleted returns `410`. |
 | `GET /v1/projects/{project_id}/notes` | List notes for a project. | When opening or refreshing a project. | Project ID in the path; no pagination initially. | Full note records ordered by most recently updated. |
-| `GET /v1/notes/{note_id}` | Fetch the latest note and its processing state for polling. | When opening a note and periodically until its processing state is terminal. | Note ID in the path. | Current text/title, revision, concepts, optional refinement proposal, state (`queued`, `processing`, `completed`, `failed`), and timestamps. |
+| `GET /v1/notes/{note_id}` | Fetch the latest note and its processing state for polling. | When opening a note and periodically until its processing state is terminal. | Note ID in the path. | Current text/title, revision, processing generation, concepts, optional refinement proposal, state (`queued`, `processing`, `completed`, `failed`), and timestamps. |
 | `PATCH /v1/notes/{note_id}` | Save user edits and enqueue processing for the new revision. | Whenever the user saves a note edit. | Changed text and/or title; at least one field. | Updated note and `queued` state. Old revision results must not overwrite the current revision. |
 | `DELETE /v1/notes/{note_id}` | Delete a note and its connections and associated vector. | When the user confirms note deletion. | Note ID in the path. | Deletion result; vector cleanup may finish asynchronously. |
 | `POST /v1/notes/{note_id}/processing-retries` | Retry AI processing while preserving the note. | When the user requests reprocessing or a previous attempt failed. | Note ID in the path; no retry reason. | `202` with the current note and `queued` state. |
 
 AI generates a title during processing only when the user did not supply one. While title generation is pending, mobile can show `Processing…` as a UI-only placeholder; the value is not persisted as the note title. Mobile polls the note response for processing status; the interval/backoff remains for mobile integration guidance.
 
-## Refinement proposals
+## Refinement proposals — Implemented
 
-| Proposed endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
+| Endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
-| `POST /v1/notes/{note_id}/refinement-regenerations` | Generate a new wording proposal after the user rejected the previous one or requests another version. | When the user asks for another rewrite. | Note ID; optionally the unchanged source-text version to prevent applying a stale result. | Accepted processing state and later a proposal in the note response. |
-| `POST /v1/notes/{note_id}/refinement-acceptance` | Apply the currently displayed proposal by replacing the note text permanently and starting processing for the new text. | When the user accepts the proposal. | Proposal ID or note revision to prevent accepting a stale proposal (exact concurrency contract open). | Updated note text, cleared proposal, and new processing state. |
-| `DELETE /v1/notes/{note_id}/refinement-proposal` | Reject and remove the displayed proposal. | When the user rejects it. | Note ID and optionally proposal ID/revision. | Updated note with the proposal removed. |
+| `POST /v1/notes/{note_id}/refinement-regenerations` | Generate a new wording proposal after the user rejected the previous one or requests another version. | When the user asks for another rewrite. | `expected_processing_generation` from the displayed note. | `202` with the proposal cleared and a new queued processing generation. |
+| `POST /v1/notes/{note_id}/refinement-acceptance` | Apply the currently displayed proposal by replacing the note text permanently and starting processing for the new text. | When the user accepts the proposal. | `expected_processing_generation` from the displayed note. | `200` with updated content, cleared proposal, and new revision/generation in `queued` state. |
+| `POST /v1/notes/{note_id}/refinement-rejections` | Reject and remove the displayed proposal. | When the user rejects it. | JSON body with `expected_processing_generation` from the displayed note. | `200` with the proposal removed and unchanged note content. |
 
-The proposal must use the same language as the original note. A result produced for an older note revision must not overwrite newer user edits. Whether accepting a proposal automatically runs AI processing again is open.
+The proposal must use the same language as the original note. A result produced for an older note revision or processing generation must not overwrite a newer result. Accepting replaces the note text and starts processing automatically. Rejection clears the proposal while retaining the original note text. Regeneration clears the current proposal, then asynchronously generates another proposal for the unchanged note text. Each action includes the `processing_generation` returned in the note representation; stale actions return `409` rather than acting on a proposal the user may not have seen. See [`docs/features/note-refinement-actions/overview.md`](../note-refinement-actions/overview.md).
 
 ## Knowledge connections and graph
 
@@ -84,4 +84,4 @@ Conversation ownership, note-context scoping, and chat history must remain isola
 
 ## Decisions needed before finalizing contracts
 
-Queue recovery settings and the refinement, search, knowledge graph, and chat API schemas remain open in their related feature documents. Do not implement those proposed routes until their corresponding contracts are approved.
+Queue recovery settings and the search, knowledge graph, and chat API schemas remain open in their related feature documents. Do not implement those proposed routes until their corresponding contracts are approved.
