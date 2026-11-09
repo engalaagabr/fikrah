@@ -11,7 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.routes import current_user
 from app.database import get_db_session
-from app.models import Note, NoteConnection, NoteProcessingJob, Project, User, VectorCleanupRequest
+from app.models import (
+    ChatConversation,
+    ChatMessage,
+    ChatMessageSource,
+    Note,
+    NoteConnection,
+    NoteProcessingJob,
+    Project,
+    User,
+    VectorCleanupRequest,
+)
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]
@@ -100,6 +110,19 @@ async def delete_project(project_id: UUID, user: AuthenticatedUser, db: Db) -> R
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The General project cannot be deleted")
     note_ids = list(await db.scalars(select(Note.id).where(Note.project_id == project.id)))
     db.add_all(VectorCleanupRequest(note_id=note_id) for note_id in note_ids)
+    conversation_ids = select(ChatConversation.id).where(
+        ChatConversation.project_id == project.id
+    )
+    message_ids = select(ChatMessage.id).where(
+        ChatMessage.conversation_id.in_(conversation_ids)
+    )
+    await db.execute(
+        delete(ChatMessageSource).where(ChatMessageSource.message_id.in_(message_ids))
+    )
+    await db.execute(
+        delete(ChatMessage).where(ChatMessage.conversation_id.in_(conversation_ids))
+    )
+    await db.execute(delete(ChatConversation).where(ChatConversation.project_id == project.id))
     if note_ids:
         await db.execute(
             delete(NoteConnection).where(
