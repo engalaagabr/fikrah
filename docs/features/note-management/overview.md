@@ -40,7 +40,7 @@ The initial schema limits user-provided titles to 240 characters and requires no
 
 The migrations add `notes`, `note_processing_jobs`, `note_connections`, `note_idempotency_keys`, and `vector_cleanup_requests`. Note content and current state are stored in PostgreSQL. Processing intents are committed with note writes before queue publication; the API never puts note content into Redis. Idempotency keys are scoped to the user and currently retained persistently.
 
-The Celery worker uses Redis as its broker, selects DeepSeek or Gemini for text analysis through `AIProviderFactory`, and uses Gemini embeddings for every note. Qdrant stores vectors under note IDs and metadata only; note text stays in PostgreSQL. The factory configuration and worker command are documented in `docs/features/note-processing/ai-provider-factory.md`.
+The Celery worker uses Redis as its broker, selects DeepSeek, Gemini, or OpenRouter for text analysis through `AIProviderFactory`, and uses Gemini embeddings for every note. Qdrant stores vectors under note IDs and metadata only; note text stays in PostgreSQL. The factory configuration and worker command are documented in `docs/features/note-processing/ai-provider-factory.md`.
 
 ## Verification
 

@@ -2,11 +2,11 @@
 
 ## Approved Providers
 
-The user requested DeepSeek and Gemini as selectable text-generation providers behind one factory. The API uses `AI_TEXT_PROVIDER=deepseek` or `AI_TEXT_PROVIDER=gemini`; `AIProviderFactory` builds the configured adapter. The provider is selected by deployment configuration, not by mobile requests.
+The user requested DeepSeek and Gemini as selectable text-generation providers behind one factory, then selected OpenRouter with `deepseek/deepseek-v4.1-flash` as the configured text model. The API uses `AI_TEXT_PROVIDER=deepseek`, `gemini`, or `openrouter`; `AIProviderFactory` builds the configured adapter. The provider and model are selected by deployment configuration, not by mobile requests.
 
 Gemini is the embedding provider for every deployment. DeepSeek's current API documentation exposes text/chat model APIs but no embeddings API; Gemini provides text embeddings. Using one embedding model keeps all note vectors in a compatible embedding space when the text-generation provider changes. The default Gemini embedding model is `gemini-embedding-001` with 768 dimensions, which is one of Google's recommended output sizes.
 
-Text model defaults are `deepseek-flash` and `gemini-3.8-flash`; deployments can override them with `DEEPSEEK_TEXT_MODEL` and `GEMINI_TEXT_MODEL`. The embedding model and dimension can be set with `GEMINI_EMBEDDING_MODEL` and `GEMINI_EMBEDDING_DIMENSIONS`.
+Text model defaults are `deepseek-flash`, `gemini-3.8-flash`, and `deepseek/deepseek-v4.1-flash` through OpenRouter. Deployments can override them with `DEEPSEEK_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, and `OPENROUTER_TEXT_MODEL`. The embedding model and dimension can be set with `GEMINI_EMBEDDING_MODEL` and `GEMINI_EMBEDDING_DIMENSIONS`.
 
 ## Note Analysis Contract
 
@@ -16,7 +16,7 @@ The selected text model returns a validated structure:
 - `refinement_proposal`: a clearer rewrite in the original language, preserving the author's meaning. It remains a proposal and never replaces saved content automatically.
 - `concepts`: up to eight concise concepts.
 
-DeepSeek uses its OpenAI-compatible Chat Completions endpoint with JSON output. Gemini uses the official Google GenAI Python SDK and Pydantic-backed structured output. Provider credentials are loaded only by the worker process. The mobile API never accepts provider keys or provider selection.
+DeepSeek and OpenRouter use OpenAI-compatible Chat Completions endpoints with JSON output; OpenRouter uses `https://openrouter.ai/api/v1`. Gemini uses the official Google GenAI Python SDK and Pydantic-backed structured output. Provider credentials are loaded only by the worker process. The mobile API never accepts provider keys or provider selection.
 
 ## Celery and Durable Dispatch
 
@@ -36,7 +36,8 @@ Required environment variables:
 - `QDRANT_URL`: Qdrant server URL.
 - `GEMINI_API_KEY`: required for embeddings; also used for text generation when Gemini is selected.
 - `DEEPSEEK_API_KEY`: required when DeepSeek is selected for text generation.
-- `AI_TEXT_PROVIDER`: `deepseek` or `gemini`.
+- `OPENROUTER_API_KEY`: required when OpenRouter is selected for text generation.
+- `AI_TEXT_PROVIDER`: `deepseek`, `gemini`, or `openrouter`.
 
 Optional model/dimension variables are listed above; `QDRANT_API_KEY` and `QDRANT_NOTES_COLLECTION` configure secured Qdrant deployments.
 
@@ -51,5 +52,6 @@ Only one Beat scheduler should run for this initial deployment command.
 ## References
 
 - [DeepSeek JSON Output](https://api-docs.deepseek.com/guides/json_mode/) and [DeepSeek model list](https://api-docs.deepseek.com/api/list-models/)
+- [OpenRouter Quickstart](https://openrouter.ai/docs/quickstart) and [OpenRouter model catalog](https://openrouter.ai/models/deepseek/deepseek-v4.1-flash)
 - [Google GenAI SDK](https://ai.google.dev/gemini-api/docs/libraries), [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output), and [Gemini embeddings](https://ai.google.dev/gemini-api/docs/embeddings)
 - [Celery Redis broker](https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html) and [Celery task acknowledgement](https://docs.celeryq.dev/en/stable/userguide/tasks.html)

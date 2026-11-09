@@ -85,10 +85,11 @@ def _chat_prompt(
     )
 
 
-class DeepSeekTextModel:
-    def __init__(self, api_key: str, model: str) -> None:
+class OpenAICompatibleTextModel:
+    def __init__(self, api_key: str, base_url: str, model: str, provider_name: str) -> None:
         self._model = model
-        self._client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com", timeout=90)
+        self._provider_name = provider_name
+        self._client = OpenAI(api_key=api_key, base_url=base_url, timeout=90)
 
     def analyze_note(self, content: str) -> NoteAnalysis:
         response = self._client.chat.completions.create(
@@ -102,7 +103,7 @@ class DeepSeekTextModel:
         )
         output = response.choices[0].message.content
         if not output or not output.strip():
-            raise ValueError("DeepSeek returned an empty note analysis")
+            raise ValueError(f"{self._provider_name} returned an empty note analysis")
         return NoteAnalysis.model_validate(json.loads(output))
 
     def answer_question(
@@ -122,8 +123,18 @@ class DeepSeekTextModel:
         )
         output = response.choices[0].message.content
         if not output or not output.strip():
-            raise ValueError("DeepSeek returned an empty chat answer")
+            raise ValueError(f"{self._provider_name} returned an empty chat answer")
         return ChatAnswer.model_validate(json.loads(output))
+
+
+class DeepSeekTextModel(OpenAICompatibleTextModel):
+    def __init__(self, api_key: str, model: str) -> None:
+        super().__init__(api_key, "https://api.deepseek.com", model, "DeepSeek")
+
+
+class OpenRouterTextModel(OpenAICompatibleTextModel):
+    def __init__(self, api_key: str, model: str) -> None:
+        super().__init__(api_key, "https://openrouter.ai/api/v1", model, "OpenRouter")
 
 
 class GeminiTextModel:
@@ -208,7 +219,15 @@ class AIProviderFactory:
             if not api_key:
                 raise RuntimeError("GEMINI_API_KEY is required when AI_TEXT_PROVIDER=gemini")
             return GeminiTextModel(api_key, os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash"))
-        raise RuntimeError("AI_TEXT_PROVIDER must be either 'deepseek' or 'gemini'")
+        if selected == "openrouter":
+            api_key = os.getenv("OPENROUTER_API_KEY")
+            if not api_key:
+                raise RuntimeError("OPENROUTER_API_KEY is required when AI_TEXT_PROVIDER=openrouter")
+            return OpenRouterTextModel(
+                api_key,
+                os.getenv("OPENROUTER_TEXT_MODEL", "deepseek/deepseek-v4.1-flash"),
+            )
+        raise RuntimeError("AI_TEXT_PROVIDER must be 'deepseek', 'gemini', or 'openrouter'")
 
     @staticmethod
     def create_embedding_model() -> EmbeddingModel:
