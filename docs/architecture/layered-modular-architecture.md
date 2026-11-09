@@ -20,7 +20,7 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 |---|---|---|---|
 | Authentication | `app/auth/routes.py` | `app/auth/service.py`, schemas, shared auth dependencies, integration errors in `app/auth/ports.py` | SMTP and Google identity adapters under `app/infrastructure/`, wired through `app/infrastructure/container.py`; PostgreSQL token/session records |
 | Projects | `app/projects/routes.py` | `ProjectService` | `ProjectRepository` and PostgreSQL |
-| Notes | `app/notes/routes.py` | `NoteService` | PostgreSQL, processing-job outbox, Celery worker |
+| Notes | `app/notes/routes.py` | `NoteService`, commands in `app/notes/contracts.py` | PostgreSQL, processing-job outbox, Celery worker |
 | Search | `app/search/routes.py` | `SemanticSearchService` | Gemini embeddings and Qdrant adapter |
 | Connections | `app/connections/routes.py` | `KnowledgeConnectionService` | PostgreSQL connection records |
 | Chat | `app/chat/routes.py` | `ChatService` | Search use case, configured text-model adapter, PostgreSQL history |
