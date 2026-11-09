@@ -1,6 +1,6 @@
 # Note Processing Lifecycle Proposal
 
-**Status: Backend-owned asynchronous processing with Redis as the job broker is approved. Polling for status, Backend-generated note IDs, and reprocessing after every note save/edit are confirmed. The worker library, Redis durability configuration, and detailed API contracts remain open.**
+**Status: Backend-owned asynchronous processing with Redis and Celery is approved. Polling, Backend-generated note IDs, reprocessing after every note save/edit, core note routes, and initial processing state values are confirmed. DeepSeek and Gemini are selectable text providers; Gemini is the fixed embedding provider. Polling interval/backoff guidance and operational queue settings remain open.**
 
 ## Confirmed Constraints
 
@@ -35,13 +35,14 @@
 5. Mobile polls the note and its processing state until the result is ready. Reopening the app does not restart completed work.
 6. A failed job leaves the note intact. The user can ask the Backend to retry processing.
 
-Redis is selected as the job broker, not as a source of truth for notes or job results. This decision does not select a worker library, Redis persistence/retry configuration, endpoint paths, response schemas, polling interval, processing-state values, or request idempotency contract. Those depend on further architecture and mobile integration requirements.
+Redis is the job broker, not a source of truth for notes or job results. Celery is the selected worker library. PostgreSQL holds durable processing intents and current note state; tasks carry only IDs. Retry limits, Redis persistence, and polling interval/backoff remain deployment/mobile integration details.
+
+The first worker delivers title generation, a rewrite proposal, up to eight concepts, and a Gemini embedding. Project clusters, explicit knowledge links, search, and graph retrieval remain subsequent features.
 
 ## Questions Before API Design
 
-- Which Redis-backed worker library should the Backend use?
-- What Redis persistence and job retry settings are required to meet the durable-processing requirement?
-- The idempotency retention period and response behavior if a key is reused with a different request body.
-- The exact processing-state values and polling interval/backoff.
+- What Redis persistence, retry limits, and worker capacity are required for the deployment?
+- How long should mobile retain an idempotency key between retries? The Backend currently retains keys persistently.
+- What polling interval/backoff should mobile use?
 
 When a note is saved again while an earlier job is still running, the earlier result must not overwrite the newer note revision. The exact revision/idempotency mechanism remains an implementation detail for the API and persistence design.

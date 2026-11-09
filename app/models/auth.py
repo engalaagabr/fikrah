@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -30,6 +30,88 @@ class Project(Base):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     is_general: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Note(Base):
+    """User-owned text note; binary source files stay on the mobile device."""
+
+    __tablename__ = "notes"
+    __table_args__ = (
+        Index("ix_notes_user_project_updated", "user_id", "project_id", "updated_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    concepts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    refinement_proposal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revision: Mapped[int] = mapped_column(default=1, nullable=False)
+    processing_status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class NoteProcessingJob(Base):
+    """Durable processing intent committed with the note revision."""
+
+    __tablename__ = "note_processing_jobs"
+    __table_args__ = (Index("ix_note_processing_jobs_status_created", "status", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    note_id: Mapped[UUID] = mapped_column(ForeignKey("notes.id", ondelete="CASCADE"), index=True)
+    revision: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    worker_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class NoteConnection(Base):
+    """Directed knowledge connection; deleting either note removes the link."""
+
+    __tablename__ = "note_connections"
+    __table_args__ = (
+        Index("ix_note_connections_target", "target_note_id"),
+        Index("uq_note_connections_pair", "source_note_id", "target_note_id", unique=True),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    source_note_id: Mapped[UUID] = mapped_column(ForeignKey("notes.id", ondelete="CASCADE"), index=True)
+    target_note_id: Mapped[UUID] = mapped_column(ForeignKey("notes.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VectorCleanupRequest(Base):
+    """Durable Qdrant cleanup intent; deliberately survives note deletion."""
+
+    __tablename__ = "vector_cleanup_requests"
+    __table_args__ = (Index("ix_vector_cleanup_requests_created", "completed_at", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    note_id: Mapped[UUID] = mapped_column(index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NoteIdempotencyKey(Base):
+    """Idempotency record for safely retrying mobile note creation requests."""
+
+    __tablename__ = "note_idempotency_keys"
+    __table_args__ = (Index("uq_note_idempotency_user_key", "user_id", "key", unique=True),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    note_id: Mapped[UUID] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
