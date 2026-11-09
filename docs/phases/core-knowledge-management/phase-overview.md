@@ -10,6 +10,7 @@ Give signed-in users a project container for organizing their personal notes and
 - Protected `General` project behavior and per-user project isolation.
 - Note storage and lifecycle APIs with user isolation, idempotent capture, processing intents, and deletion cleanup.
 - Initial note analysis, including title generation, rewrite proposals, concepts, and Qdrant embeddings.
+- Durable Celery dispatch with configurable retry and stale-job recovery settings.
 - Project-scoped semantic search and chat over project notes.
 - Knowledge connections and graph retrieval remain separate features with their own contracts.
 

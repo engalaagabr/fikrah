@@ -11,7 +11,7 @@ define production deployment or expose the services beyond the local machine.
 | Service | Local endpoint | Persistence |
 | --- | --- | --- |
 | PostgreSQL | `localhost:5432` | Docker named volume |
-| Redis | `localhost:6379` | Docker named volume |
+| Redis | `localhost:6379` | Docker named volume with AOF (`appendfsync everysec`) |
 | Qdrant HTTP API | `localhost:6333` | Docker named volume |
 | Qdrant gRPC API | `localhost:6334` | Docker named volume |
 

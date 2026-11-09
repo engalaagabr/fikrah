@@ -1,6 +1,6 @@
 # Redis Worker Technology Decision
 
-**Status: Celery selected.** Redis is the approved job broker. The user selected Celery for the worker; deployment durability, retry limits, and worker capacity still need configuration.
+**Status: Celery selected.** Redis is the approved job broker. Local Redis persistence and configurable retry/recovery limits are implemented. Production worker capacity remains deployment-specific.
 
 ## Requirements
 
@@ -25,10 +25,10 @@ Use **Celery** with Redis as the broker for note processing. PostgreSQL remains 
 
 ## Delivery and Recovery Requirements
 
-- Configure Redis persistence for queued work. Redis documents RDB snapshots and AOF; AOF with `appendfsync everysec` limits the expected loss window to about one second, while RDB-only snapshots may lose work since the last snapshot. See [Redis persistence](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/).
+- Configure Redis persistence for queued work. The local development stack uses AOF with `appendfsync everysec`; production Redis persistence is deployment-specific. Redis documents RDB snapshots and AOF; AOF with `appendfsync everysec` limits the expected loss window to about one second, while RDB-only snapshots may lose work since the last snapshot. See [Redis persistence](https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/).
 - Treat queue delivery as at-least-once. Processing handlers must be idempotent because retries or worker recovery can execute a job more than once.
 - Keep note processing state and retry outcome in PostgreSQL.
 - Preserve a durable enqueue intent in PostgreSQL and reconcile pending processing records with Redis after dispatch failures or Redis recovery. Redis is the broker, not the only record that work exists.
 - Do not put note text, PDFs, audio files, or AI responses in Redis job payloads. Queue only the note identifier and minimal job metadata.
 
-The note API persists processing intent in PostgreSQL before queue dispatch. Keep queue payloads limited to note/job identifiers, and make handlers idempotent because late acknowledgement and redelivery can run a task more than once. Concrete retry limits/backoff, worker count, and Redis deployment settings remain to be implemented and documented.
+The note API persists processing intent in PostgreSQL before queue dispatch. Keep queue payloads limited to note/job identifiers, and make handlers idempotent because late acknowledgement and redelivery can run a task more than once. Retry/backoff, stale-job recovery, dispatch cadence/batch size, and broker visibility timeout are environment-configurable; see [`docs/features/celery-recovery-config/overview.md`](../celery-recovery-config/overview.md). Production worker count and Redis deployment settings remain deployment-specific.
