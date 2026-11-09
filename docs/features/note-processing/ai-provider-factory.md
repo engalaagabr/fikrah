@@ -25,7 +25,7 @@ DeepSeek uses its OpenAI-compatible Chat Completions endpoint with JSON output. 
 - Celery Beat periodically publishes undispatched or stale processing jobs and Qdrant cleanup requests. PostgreSQL remains the recovery source if Redis is unavailable.
 - Workers use late acknowledgements. Tasks are idempotent by database job ID and note revision; duplicate delivery does not replace a newer revision.
 - Qdrant stores one vector point per note ID with user/project/revision metadata. Raw note text stays in PostgreSQL, not in Qdrant payloads.
-- A failed AI or Qdrant request retries up to three times with exponential delay, then marks the current note revision `failed` while retaining its content.
+- A failed AI or Qdrant request retries up to three times by default with exponential delay and jitter, then marks the current note revision `failed` while retaining its content. Retry count and delay are configurable; stale dispatch/processing recovery is documented in [`docs/features/celery-recovery-config/overview.md`](../celery-recovery-config/overview.md).
 
 ## Configuration
 
