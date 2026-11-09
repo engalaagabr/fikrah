@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.auth.routes import router as auth_router
 from app.database import close_database, initialize_database
+from app.projects.routes import router as projects_router
 
 
 @asynccontextmanager
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="FIKRAH API", lifespan=lifespan)
 app.include_router(auth_router)
+app.include_router(projects_router)
 
 
 @app.get("/health", tags=["operations"])
