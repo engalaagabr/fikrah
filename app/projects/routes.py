@@ -6,12 +6,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.routes import current_user
 from app.database import get_db_session
-from app.models import Project, User
+from app.models import Note, NoteConnection, NoteProcessingJob, Project, User, VectorCleanupRequest
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]
@@ -98,6 +98,16 @@ async def delete_project(project_id: UUID, user: AuthenticatedUser, db: Db) -> R
         raise _not_found()
     if project.is_general:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The General project cannot be deleted")
+    note_ids = list(await db.scalars(select(Note.id).where(Note.project_id == project.id)))
+    db.add_all(VectorCleanupRequest(note_id=note_id) for note_id in note_ids)
+    if note_ids:
+        await db.execute(
+            delete(NoteConnection).where(
+                NoteConnection.source_note_id.in_(note_ids) | NoteConnection.target_note_id.in_(note_ids)
+            )
+        )
+        await db.execute(delete(NoteProcessingJob).where(NoteProcessingJob.note_id.in_(note_ids)))
+        await db.execute(delete(Note).where(Note.id.in_(note_ids)))
     await db.delete(project)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
