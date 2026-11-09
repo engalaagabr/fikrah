@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.ai.providers import ChatAnswer
+from app.ai.contracts import ChatAnswer
 from app.auth.security import create_access_token
 from app.database import get_db_session
 from app.main import app as fastapi_app
@@ -130,9 +130,13 @@ async def test_chat_persists_messages_and_only_authorized_citations(
 
             return FakeTextModel()
 
-    monkeypatch.setattr(routes, "AIProviderFactory", Factory)
+    from app.chat import service as chat_service_module
+    from app.search import service as search_service_module
+
+    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
     monkeypatch.setattr(
-        routes,
+        search_service_module,
         "search_note_vectors",
         lambda *_args: [(note_id, 2, 0.92), (private_note_id, 1, 0.89)],
     )
@@ -198,8 +202,12 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
 
             return FakeTextModel()
 
-    monkeypatch.setattr(routes, "AIProviderFactory", Factory)
-    monkeypatch.setattr(routes, "search_note_vectors", lambda *_args: [])
+    from app.chat import service as chat_service_module
+    from app.search import service as search_service_module
+
+    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "search_note_vectors", lambda *_args: [])
     created = await client.post(
         f"/v1/projects/{project_id}/conversations",
         headers={"Authorization": f"Bearer {token}"},
@@ -249,9 +257,12 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
 
             return FakeTextModel()
 
-    original_run_in_threadpool = routes.run_in_threadpool
+    from app.chat import service as chat_service_module
+    from app.search import service as search_service_module
 
-    async def run_in_threadpool(function, *args):
+    original_to_thread = chat_service_module.asyncio.to_thread
+
+    async def run_in_thread(function, *args, **kwargs):
         nonlocal answer_call_seen
         if getattr(function, "__name__", "") == "answer_question":
             answer_call_seen = True
@@ -264,11 +275,12 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
                     )
                 )
                 await session.commit()
-        return await original_run_in_threadpool(function, *args)
+        return await original_to_thread(function, *args, **kwargs)
 
-    monkeypatch.setattr(routes, "AIProviderFactory", Factory)
-    monkeypatch.setattr(routes, "search_note_vectors", lambda *_args: [])
-    monkeypatch.setattr(routes, "run_in_threadpool", run_in_threadpool)
+    monkeypatch.setattr(chat_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "AIProviderFactory", Factory)
+    monkeypatch.setattr(search_service_module, "search_note_vectors", lambda *_args: [])
+    monkeypatch.setattr(chat_service_module.asyncio, "to_thread", run_in_thread)
     response = await client.post(
         f"/v1/conversations/{conversation_id}/messages",
         headers={"Authorization": f"Bearer {token}"},

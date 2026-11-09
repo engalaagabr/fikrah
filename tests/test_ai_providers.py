@@ -1,7 +1,8 @@
 import pytest
 
-import app.ai.providers as providers
-from app.ai.providers import AIProviderFactory
+import app.infrastructure.ai.factory as ai_factory
+import app.infrastructure.ai.gemini as gemini_adapter
+from app.infrastructure.ai.factory import AIProviderFactory
 
 
 def test_factory_selects_deepseek_or_gemini_text_provider(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -11,19 +12,24 @@ def test_factory_selects_deepseek_or_gemini_text_provider(monkeypatch: pytest.Mo
         def __init__(self, *args: str) -> None:
             created.append(args)
 
-    monkeypatch.setattr(providers, "DeepSeekTextModel", FakeProvider)
-    monkeypatch.setattr(providers, "GeminiTextModel", FakeProvider)
+    monkeypatch.setattr(ai_factory, "DeepSeekTextModel", FakeProvider)
+    monkeypatch.setattr(ai_factory, "GeminiTextModel", FakeProvider)
+    monkeypatch.setattr(ai_factory, "OpenRouterTextModel", FakeProvider)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-test-key")
     monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
     monkeypatch.setenv("DEEPSEEK_TEXT_MODEL", "deepseek-test-model")
     monkeypatch.setenv("GEMINI_TEXT_MODEL", "gemini-test-model")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-test-key")
+    monkeypatch.setenv("OPENROUTER_TEXT_MODEL", "openrouter-test-model")
 
     AIProviderFactory.create_text_model("deepseek")
     AIProviderFactory.create_text_model("gemini")
+    AIProviderFactory.create_text_model("openrouter")
 
     assert created == [
         ("deepseek-test-key", "deepseek-test-model"),
         ("gemini-test-key", "gemini-test-model"),
+        ("openrouter-test-key", "openrouter-test-model"),
     ]
 
 
@@ -45,7 +51,7 @@ def test_embedding_factory_uses_gemini_and_validates_dimensions(monkeypatch: pyt
         def __init__(self, *args: str) -> None:
             created.append(args)
 
-    monkeypatch.setattr(providers, "GeminiEmbeddingModel", FakeEmbeddingProvider)
+    monkeypatch.setattr(ai_factory, "GeminiEmbeddingModel", FakeEmbeddingProvider)
     monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
     monkeypatch.setenv("GEMINI_EMBEDDING_MODEL", "gemini-test-embedding")
     monkeypatch.setenv("GEMINI_EMBEDDING_DIMENSIONS", "1536")
@@ -72,8 +78,8 @@ def test_gemini_embedding_uses_document_and_query_retrieval_tasks(
         def __init__(self, **kwargs: object) -> None:
             self.models = Models()
 
-    monkeypatch.setattr(providers.genai, "Client", Client)
-    embedding_model = providers.GeminiEmbeddingModel("key", "model", 768)
+    monkeypatch.setattr(gemini_adapter.genai, "Client", Client)
+    embedding_model = gemini_adapter.GeminiEmbeddingModel("key", "model", 768)
 
     assert embedding_model.embed_note("a note") == [0.1]
     assert embedding_model.embed_query("a question") == [0.1]

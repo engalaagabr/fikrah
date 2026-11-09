@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from app.ai.providers import AIProviderFactory
+from app.infrastructure.ai.factory import AIProviderFactory
 from app.models import Note, NoteConnection, NoteProcessingJob, VectorCleanupRequest
 from app.worker.celery_app import celery_app, settings
 

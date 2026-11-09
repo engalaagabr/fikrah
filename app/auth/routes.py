@@ -8,32 +8,27 @@ from uuid import UUID
 import aiosmtplib
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
-from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.email import send_action_email, send_welcome_email
+from app.auth.dependencies import Db, current_user
 from app.auth.security import (
     REFRESH_TOKEN_TTL,
     DUMMY_PASSWORD_HASH,
     create_access_token,
-    decode_access_token,
     hash_opaque_token,
     hash_password,
     new_opaque_token,
     verify_password,
 )
-from app.database import get_db_session
 from app.models import EmailActionToken, EmailSendAttempt, Project, RefreshSession, User
 
 router = APIRouter(prefix="/v1/auth", tags=["authentication"])
-bearer = HTTPBearer(auto_error=False)
-Db = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 class Credentials(BaseModel):
@@ -98,6 +93,13 @@ def _utc(value: datetime) -> datetime:
 
 async def _send_limit_available(db: AsyncSession, email: str) -> bool:
     now = datetime.now(timezone.utc)
+    if db.get_bind().dialect.name == "postgresql":
+        # Serialize quota checks per address so concurrent requests cannot exceed
+        # the configured per-email cooldown or hourly maximum.
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:email, 74192038))"),
+            {"email": email},
+        )
     recent = await db.scalar(
         select(func.count(EmailSendAttempt.id)).where(
             EmailSendAttempt.email == email,
@@ -155,22 +157,6 @@ async def _issue_session(db: AsyncSession, user: User) -> AuthTokens:
     ))
     await db.flush()
     return AuthTokens(access_token=create_access_token(user.id), refresh_token=refresh)
-
-
-async def current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
-    db: Db,
-) -> User:
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise _http_error(401, "Invalid or expired access token", headers={"WWW-Authenticate": "Bearer"})
-    try:
-        user_id = decode_access_token(credentials.credentials)
-    except (InvalidTokenError, ValueError, KeyError):
-        raise _http_error(401, "Invalid or expired access token", headers={"WWW-Authenticate": "Bearer"})
-    user = await db.get(User, user_id)
-    if user is None:
-        raise _http_error(401, "Invalid or expired access token", headers={"WWW-Authenticate": "Bearer"})
-    return user
 
 
 @router.post("/register", response_model=Message, status_code=status.HTTP_202_ACCEPTED)

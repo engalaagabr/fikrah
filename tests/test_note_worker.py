@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.ai.providers import NoteAnalysis
+from app.ai.contracts import NoteAnalysis
 from app.models import Note, NoteConnection, NoteProcessingJob, Project, User, VectorCleanupRequest
 from app.models.base import Base
 from app.worker.tasks import process_note_job

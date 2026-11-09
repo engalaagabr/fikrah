@@ -1,0 +1,290 @@
+"""Project chat use cases, retrieval orchestration, and persistence rules."""
+
+import asyncio
+from datetime import datetime, timedelta, timezone
+from uuid import UUID
+
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.ai.contracts import ChatHistoryMessage, ChatNoteContext
+from app.infrastructure.ai.factory import AIProviderFactory
+from app.chat.schemas import (
+    ConversationCreate,
+    ConversationDetail,
+    ConversationView,
+    MessageCreate,
+    MessageSubmission,
+    MessageView,
+    SourceView,
+)
+from app.models import ChatConversation, ChatMessage, ChatMessageSource, Note, Project
+from app.search.service import SearchProjectNotFound, SemanticSearchService
+from app.infrastructure.vector_store.qdrant import SearchUnavailableError
+
+CHAT_CONTEXT_LIMIT = 8
+CHAT_HISTORY_LIMIT = 12
+
+
+class ChatServiceError(Exception):
+    def __init__(self, status_code: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+
+
+class ChatService:
+    def __init__(self, search_service: SemanticSearchService | None = None) -> None:
+        self._search_service = search_service or SemanticSearchService()
+
+    async def _owned_project(
+        self, db: AsyncSession, user_id: UUID, project_id: UUID, *, lock: bool = False
+    ) -> Project:
+        query = select(Project).where(Project.id == project_id, Project.user_id == user_id)
+        if lock:
+            query = query.with_for_update()
+        project = await db.scalar(query)
+        if project is None:
+            raise ChatServiceError(404, "Project not found")
+        return project
+
+    async def _owned_conversation(
+        self, db: AsyncSession, user_id: UUID, conversation_id: UUID, *, lock: bool = False
+    ) -> ChatConversation:
+        query = select(ChatConversation).where(
+            ChatConversation.id == conversation_id,
+            ChatConversation.user_id == user_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        conversation = await db.scalar(query)
+        if conversation is None:
+            raise ChatServiceError(404, "Conversation not found")
+        return conversation
+
+    async def _message_views(self, db: AsyncSession, messages: list[ChatMessage]) -> list[MessageView]:
+        if not messages:
+            return []
+        rows = await db.execute(
+            select(ChatMessageSource.message_id, Note.id, Note.title)
+            .join(Note, Note.id == ChatMessageSource.note_id)
+            .where(ChatMessageSource.message_id.in_([message.id for message in messages]))
+        )
+        sources_by_message: dict[UUID, list[SourceView]] = {}
+        for message_id, note_id, title in rows:
+            sources_by_message.setdefault(message_id, []).append(
+                SourceView(note_id=note_id, title=title)
+            )
+        return [
+            MessageView.model_validate(message).model_copy(
+                update={"sources": sources_by_message.get(message.id, [])}
+            )
+            for message in messages
+        ]
+
+    async def list_conversations(
+        self, db: AsyncSession, user_id: UUID, project_id: UUID
+    ) -> list[ConversationView]:
+        await self._owned_project(db, user_id, project_id)
+        rows = await db.scalars(
+            select(ChatConversation)
+            .where(
+                ChatConversation.user_id == user_id,
+                ChatConversation.project_id == project_id,
+            )
+            .order_by(ChatConversation.updated_at.desc(), ChatConversation.id)
+        )
+        return [ConversationView.model_validate(item) for item in rows]
+
+    async def create_conversation(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        project_id: UUID,
+        body: ConversationCreate,
+    ) -> ConversationView:
+        await self._owned_project(db, user_id, project_id, lock=True)
+        conversation = ChatConversation(
+            user_id=user_id,
+            project_id=project_id,
+            title=body.title,
+        )
+        db.add(conversation)
+        await db.commit()
+        await db.refresh(conversation)
+        return ConversationView.model_validate(conversation)
+
+    async def get_conversation(
+        self, db: AsyncSession, user_id: UUID, conversation_id: UUID
+    ) -> ConversationDetail:
+        conversation = await self._owned_conversation(db, user_id, conversation_id)
+        messages = list(
+            await db.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.conversation_id == conversation.id)
+                .order_by(ChatMessage.created_at, ChatMessage.id)
+            )
+        )
+        return ConversationDetail(
+            **ConversationView.model_validate(conversation).model_dump(),
+            messages=await self._message_views(db, messages),
+        )
+
+    async def send_message(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        conversation_id: UUID,
+        body: MessageCreate,
+    ) -> MessageSubmission:
+        conversation = await self._owned_conversation(db, user_id, conversation_id, lock=True)
+        history_desc = list(
+            await db.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.conversation_id == conversation.id)
+                .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+                .limit(CHAT_HISTORY_LIMIT)
+            )
+        )
+        history = [
+            ChatHistoryMessage(role=message.role, content=message.content)
+            for message in reversed(history_desc)
+        ]
+        project_id = conversation.project_id
+        last_message_id = history_desc[0].id if history_desc else None
+        await db.rollback()
+
+        try:
+            matches = await self._search_service.retrieve(
+                db, user_id, project_id, body.content, CHAT_CONTEXT_LIMIT
+            )
+        except SearchProjectNotFound as error:
+            raise ChatServiceError(404, "Project not found") from error
+        except Exception as error:
+            raise ChatServiceError(
+                503, "Project knowledge is temporarily unavailable"
+            ) from error
+
+        note_context = [
+            ChatNoteContext(
+                note_id=str(match.note.id),
+                title=match.note.title or "Untitled note",
+                content=match.note.content,
+            )
+            for match in matches
+        ]
+        matching_revisions = {match.note.id: match.note.revision for match in matches}
+        try:
+            text_model = AIProviderFactory.create_text_model()
+            answer = await asyncio.to_thread(
+                text_model.answer_question,
+                body.content,
+                note_context,
+                history,
+            )
+        except Exception as error:
+            raise ChatServiceError(503, "AI chat is temporarily unavailable") from error
+
+        conversation = await self._owned_conversation(db, user_id, conversation_id, lock=True)
+        latest_message_id = await db.scalar(
+            select(ChatMessage.id)
+            .where(ChatMessage.conversation_id == conversation.id)
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+            .limit(1)
+        )
+        if latest_message_id != last_message_id:
+            await db.rollback()
+            raise ChatServiceError(
+                409,
+                "The conversation changed while the answer was being generated. Retry the message.",
+            )
+
+        available_ids = set(matching_revisions)
+        valid_sources: list[UUID] = []
+        if answer.supported:
+            for source_id in answer.source_note_ids:
+                try:
+                    parsed_id = UUID(source_id)
+                except (TypeError, ValueError):
+                    continue
+                if parsed_id in available_ids and parsed_id not in valid_sources:
+                    valid_sources.append(parsed_id)
+
+        if valid_sources:
+            source_notes = await db.scalars(
+                select(Note)
+                .where(
+                    Note.id.in_(valid_sources),
+                    Note.user_id == user_id,
+                    Note.project_id == project_id,
+                    Note.processing_status == "completed",
+                )
+                .with_for_update()
+            )
+            current_source_ids = {
+                note.id
+                for note in source_notes
+                if note.revision == matching_revisions.get(note.id)
+            }
+            valid_sources = [note_id for note_id in valid_sources if note_id in current_source_ids]
+
+        supported = answer.supported and bool(valid_sources)
+        answer_content = answer.answer.strip()
+        if not supported and answer.supported:
+            answer_content = "I couldn't find an answer supported by your project notes."
+        elif not answer_content:
+            supported = False
+            answer_content = "I couldn't find an answer supported by your project notes."
+
+        now = datetime.now(timezone.utc)
+        user_message = ChatMessage(
+            conversation_id=conversation.id,
+            role="user",
+            content=body.content,
+            created_at=now,
+        )
+        assistant_message = ChatMessage(
+            conversation_id=conversation.id,
+            role="assistant",
+            content=answer_content,
+            supported=supported,
+            created_at=now + timedelta(microseconds=1),
+        )
+        if conversation.title is None:
+            conversation.title = body.content[:120]
+        db.add_all([user_message, assistant_message])
+        await db.flush()
+        db.add_all(
+            ChatMessageSource(message_id=assistant_message.id, note_id=note_id)
+            for note_id in valid_sources
+            if supported
+        )
+        await db.commit()
+        await db.refresh(conversation)
+        await db.refresh(user_message)
+        await db.refresh(assistant_message)
+
+        user_view, assistant_view = await self._message_views(
+            db, [user_message, assistant_message]
+        )
+        return MessageSubmission(
+            conversation=ConversationView.model_validate(conversation),
+            user_message=user_view,
+            assistant_message=assistant_view,
+        )
+
+    async def delete_conversation(
+        self, db: AsyncSession, user_id: UUID, conversation_id: UUID
+    ) -> None:
+        conversation = await self._owned_conversation(db, user_id, conversation_id, lock=True)
+        message_ids = select(ChatMessage.id).where(
+            ChatMessage.conversation_id == conversation.id
+        )
+        await db.execute(
+            delete(ChatMessageSource).where(ChatMessageSource.message_id.in_(message_ids))
+        )
+        await db.execute(
+            delete(ChatMessage).where(ChatMessage.conversation_id == conversation.id)
+        )
+        await db.delete(conversation)
+        await db.commit()
