@@ -7,9 +7,7 @@ from uuid import UUID
 
 from qdrant_client import QdrantClient, models
 
-
-class SearchUnavailableError(RuntimeError):
-    """Raised when Qdrant is not configured or cannot serve a query."""
+from app.search.errors import SearchUnavailableError
 
 
 def search_note_vectors(

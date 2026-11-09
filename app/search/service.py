@@ -1,18 +1,16 @@
 """Project-scoped semantic retrieval use case."""
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infrastructure.ai.factory import AIProviderFactory
-from app.infrastructure.vector_store.qdrant import (
-    SearchUnavailableError,
-    search_note_vectors,
-)
+from app.ai.ports import EmbeddingModel
 from app.models import Note, Project
+from app.search.errors import SearchUnavailableError
 
 
 class SearchProjectNotFound(Exception):
@@ -26,6 +24,16 @@ class SearchMatch:
 
 
 class SemanticSearchService:
+    def __init__(
+        self,
+        embedding_model_factory: Callable[[], EmbeddingModel],
+        vector_search: Callable[
+            [list[float], UUID, UUID, int], list[tuple[UUID, int, float]]
+        ],
+    ) -> None:
+        self._embedding_model_factory = embedding_model_factory
+        self._vector_search = vector_search
+
     async def retrieve(
         self,
         db: AsyncSession,
@@ -41,10 +49,10 @@ class SemanticSearchService:
             raise SearchProjectNotFound
 
         try:
-            embedding_model = AIProviderFactory.create_embedding_model()
+            embedding_model = self._embedding_model_factory()
             query_vector = await asyncio.to_thread(embedding_model.embed_query, query)
             matches = await asyncio.to_thread(
-                search_note_vectors, query_vector, user_id, project_id, limit
+                self._vector_search, query_vector, user_id, project_id, limit
             )
         except Exception as exc:
             if isinstance(exc, SearchUnavailableError):
