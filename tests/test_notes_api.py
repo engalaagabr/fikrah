@@ -295,3 +295,78 @@ async def test_project_deletion_removes_notes_connections_and_records_vector_cle
         assert await session.scalar(select(func.count()).select_from(VectorCleanupRequest)) == 2
         # A retry cannot silently recreate content after project deletion.
         assert await session.scalar(select(func.count()).select_from(NoteIdempotencyKey)) == 2
+
+
+@pytest.mark.asyncio
+async def test_note_connections_and_graph_are_project_and_user_scoped(
+    note_api: tuple[AsyncClient, async_sessionmaker[AsyncSession], UUID, UUID, UUID, UUID, str, str]
+) -> None:
+    client, sessions, _, _, project_id, other_project_id, owner_token, other_token = note_api
+    owner_headers = {"Authorization": f"Bearer {owner_token}", "Idempotency-Key": "graph-owner"}
+    note_ids: list[UUID] = []
+    for index in range(2):
+        created = await client.post(
+            f"/v1/projects/{project_id}/notes",
+            headers={**owner_headers, "Idempotency-Key": f"graph-owner-{index}"},
+            json={"content": f"Owner idea {index}"},
+        )
+        note_ids.append(UUID(created.json()["id"]))
+
+    foreign_created = await client.post(
+        f"/v1/projects/{other_project_id}/notes",
+        headers={"Authorization": f"Bearer {other_token}", "Idempotency-Key": "graph-foreign"},
+        json={"content": "Private idea"},
+    )
+    foreign_note_id = UUID(foreign_created.json()["id"])
+
+    async with sessions() as session:
+        first = await session.get(Note, note_ids[0])
+        second = await session.get(Note, note_ids[1])
+        foreign = await session.get(Note, foreign_note_id)
+        assert first is not None and second is not None and foreign is not None
+        first.processing_status = second.processing_status = foreign.processing_status = "completed"
+        first.concepts = ["Planning", "Ideas"]
+        second.concepts = ["ideas", "Health"]
+        foreign.concepts = ["Ideas"]
+        session.add(NoteConnection(source_note_id=note_ids[0], target_note_id=note_ids[1]))
+        session.add(NoteConnection(source_note_id=note_ids[1], target_note_id=note_ids[0]))
+        await session.commit()
+
+    owner_headers.pop("Idempotency-Key")
+    related = await client.get(
+        f"/v1/notes/{note_ids[0]}/connections", headers=owner_headers
+    )
+    assert related.status_code == 200
+    assert related.json() == [
+        {
+            "note_id": str(note_ids[1]),
+            "title": None,
+            "shared_concepts": ["Ideas"],
+            "updated_at": related.json()[0]["updated_at"],
+        }
+    ]
+
+    graph = await client.get(
+        f"/v1/projects/{project_id}/knowledge-graph", headers=owner_headers
+    )
+    assert graph.status_code == 200
+    assert {node["id"] for node in graph.json()["nodes"]} == {str(note_id) for note_id in note_ids}
+    graph_source_id, graph_target_id = sorted(note_ids, key=str)
+    shared_concept = "Ideas" if graph_source_id == note_ids[0] else "ideas"
+    assert graph.json()["edges"] == [
+        {
+            "source_note_id": str(graph_source_id),
+            "target_note_id": str(graph_target_id),
+            "shared_concepts": [shared_concept],
+        }
+    ]
+
+    assert (
+        await client.get(f"/v1/notes/{note_ids[0]}/connections", headers={"Authorization": f"Bearer {other_token}"})
+    ).status_code == 404
+    assert (
+        await client.get(
+            f"/v1/projects/{project_id}/knowledge-graph",
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+    ).status_code == 404
