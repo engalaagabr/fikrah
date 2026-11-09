@@ -53,8 +53,10 @@ async def test_email_auth_verification_refresh_and_logout(
     async def capture_welcome(email: str) -> None:
         welcomed.append(email)
 
-    monkeypatch.setattr("app.auth.service.send_action_email", capture_email)
-    monkeypatch.setattr("app.auth.service.send_welcome_email", capture_welcome)
+    monkeypatch.setattr("app.auth.routes.auth_service.send_action_email", capture_email)
+    monkeypatch.setattr(
+        "app.auth.routes.auth_service.send_welcome_email", capture_welcome
+    )
     email = "Fikrah.User@example.com"
     password = "a secure passphrase with length"
 
@@ -82,7 +84,7 @@ async def test_email_auth_verification_refresh_and_logout(
 
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
     monkeypatch.setattr(
-        "app.auth.service.verify_google_id_token",
+        "app.auth.routes.auth_service.verify_google_id_token",
         lambda token, audience: {
             "sub": "linked-google-subject",
             "email": email.lower(),
@@ -155,13 +157,17 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
             "email_verified": True,
         }
 
-    monkeypatch.setattr("app.auth.service.verify_google_id_token", verify_google_token)
+    monkeypatch.setattr(
+        "app.auth.routes.auth_service.verify_google_id_token", verify_google_token
+    )
     welcomed: list[str] = []
 
     async def capture_welcome(email: str) -> None:
         welcomed.append(email)
 
-    monkeypatch.setattr("app.auth.service.send_welcome_email", capture_welcome)
+    monkeypatch.setattr(
+        "app.auth.routes.auth_service.send_welcome_email", capture_welcome
+    )
     response = await auth_client.post(
         "/v1/auth/google", json={"id_token": "google-id-token-from-mobile"}
     )

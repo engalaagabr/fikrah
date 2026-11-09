@@ -5,7 +5,6 @@ from typing import Annotated, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth import service
 from app.auth.contracts import (
     ActionToken,
     AuthMessage,
@@ -29,6 +28,7 @@ from app.auth.schemas import (
     TokenRequest,
     UserView,
 )
+from app.infrastructure.container import auth_service
 from app.models import User
 
 router = APIRouter(prefix="/v1/auth", tags=["authentication"])
@@ -65,7 +65,7 @@ async def _tokens(workflow: Awaitable[AuthTokenPair]) -> AuthTokens:
 @router.post("/register", response_model=Message, status_code=status.HTTP_202_ACCEPTED)
 async def register(body: Credentials, db: Db) -> Message:
     return await _message(
-        service.register(
+        auth_service.register(
             EmailPassword(email=str(body.email), password=body.password), db
         )
     )
@@ -73,7 +73,7 @@ async def register(body: Credentials, db: Db) -> Message:
 
 @router.post("/verify-email", response_model=Message)
 async def verify_email(body: TokenRequest, db: Db) -> Message:
-    return await _message(service.verify_email(ActionToken(token=body.token), db))
+    return await _message(auth_service.verify_email(ActionToken(token=body.token), db))
 
 
 @router.post(
@@ -81,21 +81,23 @@ async def verify_email(body: TokenRequest, db: Db) -> Message:
 )
 async def resend_verification(body: EmailRequest, db: Db) -> Message:
     return await _message(
-        service.resend_verification(EmailAddress(email=str(body.email)), db)
+        auth_service.resend_verification(EmailAddress(email=str(body.email)), db)
     )
 
 
 @router.post("/login", response_model=AuthTokens)
 async def login(body: Credentials, db: Db) -> AuthTokens:
     return await _tokens(
-        service.login(EmailPassword(email=str(body.email), password=body.password), db)
+        auth_service.login(
+            EmailPassword(email=str(body.email), password=body.password), db
+        )
     )
 
 
 @router.post("/google", response_model=AuthTokens)
 async def google_login(body: GoogleLoginRequest, db: Db) -> AuthTokens:
     return await _tokens(
-        service.google_login(GoogleIdentityToken(id_token=body.id_token), db)
+        auth_service.google_login(GoogleIdentityToken(id_token=body.id_token), db)
     )
 
 
@@ -106,14 +108,14 @@ async def google_login(body: GoogleLoginRequest, db: Db) -> AuthTokens:
 )
 async def request_password_reset(body: EmailRequest, db: Db) -> Message:
     return await _message(
-        service.request_password_reset(EmailAddress(email=str(body.email)), db)
+        auth_service.request_password_reset(EmailAddress(email=str(body.email)), db)
     )
 
 
 @router.post("/password-reset/confirm", response_model=Message)
 async def confirm_password_reset(body: ResetPasswordRequest, db: Db) -> Message:
     return await _message(
-        service.confirm_password_reset(
+        auth_service.confirm_password_reset(
             PasswordReset(token=body.token, new_password=body.new_password), db
         )
     )
@@ -122,14 +124,14 @@ async def confirm_password_reset(body: ResetPasswordRequest, db: Db) -> Message:
 @router.post("/refresh", response_model=AuthTokens)
 async def refresh(body: RefreshRequest, db: Db) -> AuthTokens:
     return await _tokens(
-        service.refresh(RefreshToken(refresh_token=body.refresh_token), db)
+        auth_service.refresh(RefreshToken(refresh_token=body.refresh_token), db)
     )
 
 
 @router.post("/logout", response_model=Message)
 async def logout(body: RefreshRequest, db: Db) -> Message:
     return await _message(
-        service.logout(RefreshToken(refresh_token=body.refresh_token), db)
+        auth_service.logout(RefreshToken(refresh_token=body.refresh_token), db)
     )
 
 
