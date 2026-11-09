@@ -17,7 +17,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.email import send_action_email
+from app.auth.email import send_action_email, send_welcome_email
 from app.auth.security import (
     REFRESH_TOKEN_TTL,
     DUMMY_PASSWORD_HASH,
@@ -187,6 +187,7 @@ async def register(body: Credentials, db: Db) -> Message:
     if raw_token is not None:
         try:
             await send_action_email(body.email, raw_token, "verify_email")
+            await send_welcome_email(body.email)
         except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
             raise _http_error(503, "Email delivery is temporarily unavailable") from exc
     return Message(message="If the address can be registered, a verification email will be sent.")
@@ -258,6 +259,7 @@ async def google_login(body: GoogleLoginRequest, db: Db) -> AuthTokens:
     if not email or not subject or claims.get("email_verified") is not True:
         raise _http_error(401, "Google account must have a verified email")
 
+    created_user = False
     async with db.begin():
         subject_user = await db.scalar(
             select(User).where(User.google_subject == subject).with_for_update()
@@ -266,6 +268,7 @@ async def google_login(body: GoogleLoginRequest, db: Db) -> AuthTokens:
         if subject_user is not None and subject_user.email != email:
             raise _http_error(409, "The Google identity is linked to a different email address")
         if user is None:
+            created_user = True
             user = User(email=email, google_subject=subject, email_verified_at=datetime.now(timezone.utc))
             db.add(user)
             await db.flush()
@@ -275,7 +278,13 @@ async def google_login(body: GoogleLoginRequest, db: Db) -> AuthTokens:
         else:
             user.google_subject = subject
             user.email_verified_at = user.email_verified_at or datetime.now(timezone.utc)
-        return await _issue_session(db, user)
+        tokens = await _issue_session(db, user)
+    if created_user:
+        try:
+            await send_welcome_email(email)
+        except (RuntimeError, OSError, aiosmtplib.SMTPException) as exc:
+            raise _http_error(503, "Email delivery is temporarily unavailable") from exc
+    return tokens
 
 
 @router.post("/password-reset/request", response_model=Message, status_code=status.HTTP_202_ACCEPTED)

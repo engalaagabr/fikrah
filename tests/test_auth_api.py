@@ -44,7 +44,13 @@ async def test_email_auth_verification_refresh_and_logout(
     async def capture_email(email: str, token: str, purpose: str) -> None:
         delivered.append((email, token, purpose))
 
+    welcomed: list[str] = []
+
+    async def capture_welcome(email: str) -> None:
+        welcomed.append(email)
+
     monkeypatch.setattr("app.auth.routes.send_action_email", capture_email)
+    monkeypatch.setattr("app.auth.routes.send_welcome_email", capture_welcome)
     email = "Fikrah.User@example.com"
     password = "a secure passphrase with length"
 
@@ -54,6 +60,7 @@ async def test_email_auth_verification_refresh_and_logout(
     assert registration.status_code == 202
     assert delivered[0][0] == email.lower()
     assert delivered[0][2] == "verify_email"
+    assert welcomed == [email.lower()]
 
     blocked_login = await auth_client.post(
         "/v1/auth/login", json={"email": email, "password": password}
@@ -80,6 +87,7 @@ async def test_email_auth_verification_refresh_and_logout(
         "/v1/auth/google", json={"id_token": "google-id-token-for-existing-account"}
     )
     assert linked_google_login.status_code == 200
+    assert welcomed == [email.lower()]
 
     login = await auth_client.post("/v1/auth/login", json={"email": email, "password": password})
     assert login.status_code == 200
@@ -127,11 +135,18 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
         return {"sub": "google-user-1", "email": "google.user@example.com", "email_verified": True}
 
     monkeypatch.setattr("app.auth.routes.id_token.verify_oauth2_token", verify_google_token)
+    welcomed: list[str] = []
+
+    async def capture_welcome(email: str) -> None:
+        welcomed.append(email)
+
+    monkeypatch.setattr("app.auth.routes.send_welcome_email", capture_welcome)
     response = await auth_client.post(
         "/v1/auth/google", json={"id_token": "google-id-token-from-mobile"}
     )
 
     assert response.status_code == 200
+    assert welcomed == ["google.user@example.com"]
     assert response.json()["access_token"]
     me = await auth_client.get(
         "/v1/auth/me",

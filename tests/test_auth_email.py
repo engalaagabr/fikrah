@@ -46,3 +46,26 @@ async def test_action_email_contains_plain_text_and_html(
 async def test_action_email_rejects_unknown_purpose(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValueError, match="Unsupported email action purpose"):
         await send_action_email("person@example.test", "token", "login")
+
+
+@pytest.mark.asyncio
+async def test_welcome_email_contains_plain_text_and_html(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.auth.email import send_welcome_email
+
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_FROM", "FIKRAH <noreply@example.test>")
+    sent: list[EmailMessage] = []
+
+    async def capture_send(message: EmailMessage, **_kwargs: object) -> None:
+        sent.append(message)
+
+    monkeypatch.setattr("app.auth.email.aiosmtplib.send", capture_send)
+
+    await send_welcome_email("person@example.test")
+
+    message = sent[0]
+    assert message["Subject"] == "Welcome to FIKRAH"
+    assert message["To"] == "person@example.test"
+    plain_part, html_part = message.iter_parts()
+    assert "Your personal knowledge space is ready" in plain_part.get_content()
+    assert "Welcome to FIKRAH!" in html_part.get_content()
