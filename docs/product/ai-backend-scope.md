@@ -69,7 +69,7 @@ The AI and Backend owner is responsible for requirements discovery, API design a
 - Qdrant stores embeddings and the identifiers/metadata needed to retrieve matching notes.
 - MongoDB is not part of the current stack; the confirmed requirements do not call for a third database.
 - Deletion is authoritative in PostgreSQL and records a durable Qdrant cleanup request in the same transaction; a worker retries Qdrant cleanup until successful. Reads must validate retrieved note identifiers against PostgreSQL during the eventual-consistency window.
-- Synchronization and recovery for non-deletion writes between PostgreSQL and Qdrant remain to be designed.
+- PostgreSQL remains authoritative for note and processing-job state. Qdrant writes run as part of durable Celery processing jobs and are retried with the job; search validates candidate note revisions against PostgreSQL before returning them. PostgreSQL and Qdrant do not share a transaction, so temporary vector-store lag is possible. Reconciliation for a prolonged outage remains an operational concern to define before production deployment.
 
 ## Discovery Still Needed
 
