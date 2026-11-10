@@ -3,11 +3,12 @@
 import os
 
 from app.ai.ports import EmbeddingModel, TextModel
-from app.infrastructure.ai.gemini import GeminiEmbeddingModel, GeminiTextModel
-from app.infrastructure.ai.openai_compatible import (
-    DeepSeekTextModel,
-    OpenRouterTextModel,
+from app.infrastructure.ai.providers.deepseek import DeepSeekTextModel
+from app.infrastructure.ai.providers.gemini import (
+    GeminiEmbeddingModel,
+    GeminiTextModel,
 )
+from app.infrastructure.ai.providers.openrouter import OpenRouterTextModel
 
 
 class AIProviderFactory:

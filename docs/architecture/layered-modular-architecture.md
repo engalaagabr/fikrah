@@ -29,7 +29,7 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 
 ## AI boundaries
 
-`app/ai/contracts.py`, `ports.py`, and `prompts.py` define the application-facing AI data and behavior. Prompts are authored outside provider adapters. `app/infrastructure/ai/` translates those contracts to Gemini, DeepSeek, or OpenRouter SDK/API formats. `AIProviderFactory` is infrastructure composition and reads deployment configuration; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
+`app/ai/contracts.py`, `ports.py`, and `prompts.py` define the application-facing AI data and behavior. Prompts are authored outside provider adapters. `app/infrastructure/ai/providers/` contains separate Gemini, DeepSeek, and OpenRouter adapters; only their shared OpenAI-compatible transport is implemented once. `AIProviderFactory` in `app/infrastructure/ai/factory.py` is infrastructure composition and reads deployment configuration; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
 
 ## Request and processing flow
 

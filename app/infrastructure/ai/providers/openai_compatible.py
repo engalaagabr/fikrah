@@ -68,13 +68,3 @@ class OpenAICompatibleTextModel:
         if not output or not output.strip():
             raise ValueError(f"{self._provider_name} returned an empty chat answer")
         return ChatAnswer.model_validate_json(output)
-
-
-class DeepSeekTextModel(OpenAICompatibleTextModel):
-    def __init__(self, api_key: str, model: str) -> None:
-        super().__init__(api_key, "https://api.deepseek.com", model, "DeepSeek")
-
-
-class OpenRouterTextModel(OpenAICompatibleTextModel):
-    def __init__(self, api_key: str, model: str) -> None:
-        super().__init__(api_key, "https://openrouter.ai/api/v1", model, "OpenRouter")
