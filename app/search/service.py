@@ -2,7 +2,6 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
@@ -10,17 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.ports import EmbeddingModel
 from app.models import Note, Project
+from app.search.contracts import SearchMatch
 from app.search.errors import SearchUnavailableError
 
 
 class SearchProjectNotFound(Exception):
     pass
-
-
-@dataclass(frozen=True, slots=True)
-class SearchMatch:
-    note: Note
-    score: float
 
 
 class SemanticSearchService:
@@ -76,7 +70,14 @@ class SemanticSearchService:
             note.id: note for note in notes if note.revision == revisions[note.id]
         }
         return [
-            SearchMatch(note=current_notes[note_id], score=score)
+            SearchMatch(
+                note_id=note_id,
+                title=current_notes[note_id].title,
+                content=current_notes[note_id].content,
+                revision=current_notes[note_id].revision,
+                score=score,
+                updated_at=current_notes[note_id].updated_at,
+            )
             for note_id, _revision, score in matches
             if note_id in current_notes
         ]
