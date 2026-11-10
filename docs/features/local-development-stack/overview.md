@@ -19,6 +19,10 @@ services beyond the local machine.
 | Celery worker | Redis-backed queue | Stateless container |
 | Celery scheduler | Redis-backed beat schedule | Stateless container |
 
+The Qdrant image is pinned to `v1.19.1` so rebuilding the local stack does not
+silently pull a different database release. Upgrade the tag deliberately and
+verify the new image against the current vector-store adapter before adopting it.
+
 PostgreSQL credentials are configured with `POSTGRES_DB`, `POSTGRES_USER`, and
 `POSTGRES_PASSWORD`; keep those values aligned with `DATABASE_URL` in `.env`.
 The default credentials are for local development only.
