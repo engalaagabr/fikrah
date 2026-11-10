@@ -4,10 +4,13 @@ import os
 
 from app.auth.service import AuthService
 from app.chat.service import ChatService
+from app.connections.service import KnowledgeConnectionService
 from app.infrastructure.email.smtp import send_action_email, send_welcome_email
 from app.infrastructure.identity.google import verify_google_id_token
 from app.infrastructure.llm.factory import LLMProviderFactory
 from app.infrastructure.vector_store.qdrant import search_note_vectors
+from app.notes.service import NoteService
+from app.projects.service import ProjectService
 from app.search.service import SemanticSearchService
 
 auth_service = AuthService(
@@ -24,3 +27,6 @@ chat_service = ChatService(
     search_service=search_service,
     text_generator_factory=LLMProviderFactory.create_text_generator,
 )
+note_service = NoteService()
+project_service = ProjectService()
+knowledge_connection_service = KnowledgeConnectionService()

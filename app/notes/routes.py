@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
 from app.database import get_db_session
+from app.infrastructure.container import note_service
 from app.models import User
 from app.notes.contracts import (
     NoteCreateCommand,
@@ -17,12 +18,11 @@ from app.notes.contracts import (
 )
 from app.notes.results import NoteResult
 from app.notes.schemas import NoteCreate, NoteUpdate, NoteView, ProposalAction
-from app.notes.service import NoteService, NoteServiceError
+from app.notes.service import NoteServiceError
 
 router = APIRouter(tags=["notes"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]
 AuthenticatedUser = Annotated[User, Depends(current_user)]
-note_service = NoteService()
 T = TypeVar("T")
 
 
