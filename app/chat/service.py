@@ -191,13 +191,13 @@ class ChatService:
 
         note_context = [
             ChatNoteContext(
-                note_id=str(match.note.id),
-                title=match.note.title or "Untitled note",
-                content=match.note.content,
+                note_id=str(match.note_id),
+                title=match.title or "Untitled note",
+                content=match.content,
             )
             for match in matches
         ]
-        matching_revisions = {match.note.id: match.note.revision for match in matches}
+        matching_revisions = {match.note_id: match.revision for match in matches}
         try:
             text_model = self._text_model_factory()
             answer = await asyncio.to_thread(
