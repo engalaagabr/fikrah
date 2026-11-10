@@ -14,6 +14,7 @@
 - LLM processing can produce concepts (up to eight), a project-scoped cluster, knowledge links, and a rewrite proposal.
 - A rewrite proposal is surfaced only if the note has not changed while processing. Accepting it replaces the note text; rejecting it discards the proposal.
 - A processing failure must not lose the note, and the user must be able to retry.
+- Note text is untrusted input: analysis instructions are kept separate from the serialized note content, and instructions inside the note are treated as content rather than followed.
 
 ## Mobile Integration Contract
 

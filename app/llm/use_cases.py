@@ -11,13 +11,14 @@ from app.llm.prompts import (
     CHAT_SYSTEM_PROMPT,
     NOTE_ANALYSIS_SYSTEM_PROMPT,
     build_chat_prompt,
+    build_note_analysis_prompt,
 )
 
 
 def analyze_note(text_generator: StructuredTextGenerator, content: str) -> NoteAnalysis:
     return text_generator.generate_structured(
         system_instruction=NOTE_ANALYSIS_SYSTEM_PROMPT,
-        user_content=content,
+        user_content=build_note_analysis_prompt(content),
         response_model=NoteAnalysis,
     )
 
