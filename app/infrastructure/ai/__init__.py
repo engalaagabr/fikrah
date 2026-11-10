@@ -1,1 +1,0 @@
-"""External AI provider adapters."""

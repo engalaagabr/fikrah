@@ -1,10 +1,10 @@
-# AI Provider Factory and Note Worker
+# LLM Provider Factory and Note Worker
 
 ## Approved Providers
 
-DeepSeek, Gemini, and OpenRouter have separate adapter modules under `app/infrastructure/ai/providers/`. `AIProviderFactory` in `app/infrastructure/ai/factory.py` is the composition root: it reads deployment configuration and creates the selected adapter. The local environment selects OpenRouter with `deepseek/deepseek-v4.1-flash`; deployments may select `deepseek`, `gemini`, or `openrouter` through `AI_TEXT_PROVIDER`. Provider and model are selected by deployment configuration, not by mobile requests.
+DeepSeek, Gemini, and OpenRouter have separate adapter modules under `app/infrastructure/llm/providers/`. `LLMProviderFactory` in `app/infrastructure/llm/factory.py` reads deployment configuration and constructs the selected adapter. The local environment selects OpenRouter with `deepseek/deepseek-v4.1-flash`; deployments may select `deepseek`, `gemini`, or `openrouter` through `LLM_TEXT_PROVIDER`. Provider and model are selected by deployment configuration, not by mobile requests.
 
-The provider package keeps provider-specific endpoints in `deepseek.py`, `openrouter.py`, and `gemini.py`. DeepSeek uses its native API endpoint; OpenRouter uses its own endpoint and model namespace. Their common Chat Completions request/response handling lives in `openai_compatible.py`. Shared prompts and application contracts remain in `app/ai/`, outside the infrastructure adapters.
+The provider package keeps provider-specific endpoints in `deepseek.py`, `openrouter.py`, and `gemini.py`. DeepSeek uses its native API endpoint; OpenRouter uses its own endpoint and model namespace. Their common Chat Completions transport lives in `openai_compatible.py`. Application use cases in `app/llm/use_cases.py` compose chat prompts and choose the response contract; `NoteProcessingService` in `app/notes/processing.py` orchestrates note analysis, embedding, and persistence. Adapters accept structured-generation requests through the `StructuredTextGenerator` port and handle provider-specific structured output.
 
 Gemini is the embedding provider for every deployment. DeepSeek's current API documentation exposes text/chat model APIs but no embeddings API; Gemini provides text embeddings. Using one embedding model keeps all note vectors in a compatible embedding space when the text-generation provider changes. The default Gemini embedding model is `gemini-embedding-001` with 768 dimensions, which is one of Google's recommended output sizes.
 
@@ -27,7 +27,8 @@ DeepSeek and OpenRouter use OpenAI-compatible Chat Completions endpoints with JS
 - Celery Beat periodically publishes undispatched or stale processing jobs and Qdrant cleanup requests. PostgreSQL remains the recovery source if Redis is unavailable.
 - Workers use late acknowledgements. Tasks are idempotent by database job ID and note revision; duplicate delivery does not replace a newer revision.
 - Qdrant stores one vector point per note ID with user/project/revision metadata. Raw note text stays in PostgreSQL, not in Qdrant payloads.
-- A failed AI or Qdrant request retries up to three times by default with exponential delay and jitter, then marks the current note revision `failed` while retaining its content. Retry count and delay are configurable; stale dispatch/processing recovery is documented in [`docs/features/celery-recovery-config/overview.md`](../celery-recovery-config/overview.md).
+- Celery task functions delegate note analysis and indexing to `NoteProcessingService`. A PostgreSQL persistence adapter checks the note revision and processing generation before saving, and the Qdrant adapter owns vector collection creation, upsert, search, and delete operations.
+- A failed LLM or Qdrant request retries up to three times by default with exponential delay and jitter, then marks the current note revision `failed` while retaining its content. Retry count and delay are configurable; stale dispatch/processing recovery is documented in [`docs/features/celery-recovery-config/overview.md`](../celery-recovery-config/overview.md).
 
 ## Configuration
 
@@ -39,7 +40,7 @@ Required environment variables:
 - `GEMINI_API_KEY`: required for embeddings; also used for text generation when Gemini is selected.
 - `DEEPSEEK_API_KEY`: required when DeepSeek is selected for text generation.
 - `OPENROUTER_API_KEY`: required when OpenRouter is selected for text generation.
-- `AI_TEXT_PROVIDER`: `deepseek`, `gemini`, or `openrouter`.
+- `LLM_TEXT_PROVIDER`: `deepseek`, `gemini`, or `openrouter`.
 
 Optional model/dimension variables are listed above; `QDRANT_API_KEY` and `QDRANT_NOTES_COLLECTION` configure secured Qdrant deployments.
 

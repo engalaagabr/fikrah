@@ -4,11 +4,11 @@
 
 ## Requirements
 
-- FastAPI accepts note-processing requests without holding the mobile request open for the full AI operation.
+- FastAPI accepts note-processing requests without holding the mobile request open for the full LLM operation.
 - Processing continues when the mobile application closes.
 - Processing state and user-visible results remain in PostgreSQL, the source of truth.
 - Failures are recorded and can be retried without losing the note.
-- Redis carries small job messages; note text and AI results should not be stored as queue payloads or Redis results.
+- Redis carries small job messages; note text and LLM results should not be stored as queue payloads or Redis results.
 
 ## Candidates
 
@@ -29,6 +29,6 @@ Use **Celery** with Redis as the broker for note processing. PostgreSQL remains 
 - Treat queue delivery as at-least-once. Processing handlers must be idempotent because retries or worker recovery can execute a job more than once.
 - Keep note processing state and retry outcome in PostgreSQL.
 - Preserve a durable enqueue intent in PostgreSQL and reconcile pending processing records with Redis after dispatch failures or Redis recovery. Redis is the broker, not the only record that work exists.
-- Do not put note text, PDFs, audio files, or AI responses in Redis job payloads. Queue only the note identifier and minimal job metadata.
+- Do not put note text, PDFs, audio files, or LLM responses in Redis job payloads. Queue only the note identifier and minimal job metadata.
 
 The note API persists processing intent in PostgreSQL before queue dispatch. Keep queue payloads limited to note/job identifiers, and make handlers idempotent because late acknowledgement and redelivery can run a task more than once. Retry/backoff, stale-job recovery, dispatch cadence/batch size, and broker visibility timeout are environment-configurable; see [`docs/features/celery-recovery-config/overview.md`](../celery-recovery-config/overview.md). Production worker count and Redis deployment settings remain deployment-specific.

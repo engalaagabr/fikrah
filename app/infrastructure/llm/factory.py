@@ -1,52 +1,52 @@
-"""Application composition for configured AI ports."""
+"""Application composition for configured LLM ports."""
 
 import os
 
-from app.ai.ports import EmbeddingModel, TextModel
-from app.infrastructure.ai.providers.deepseek import DeepSeekTextModel
-from app.infrastructure.ai.providers.gemini import (
+from app.infrastructure.llm.providers.deepseek import DeepSeekTextGenerator
+from app.infrastructure.llm.providers.gemini import (
     GeminiEmbeddingModel,
-    GeminiTextModel,
+    GeminiTextGenerator,
 )
-from app.infrastructure.ai.providers.openrouter import OpenRouterTextModel
+from app.infrastructure.llm.providers.openrouter import OpenRouterTextGenerator
+from app.llm.ports import EmbeddingModel, StructuredTextGenerator
 
 
-class AIProviderFactory:
+class LLMProviderFactory:
     """Build the configured text adapter and the fixed Gemini embedding adapter."""
 
     @staticmethod
-    def create_text_model(provider: str | None = None) -> TextModel:
-        selected = (provider or os.getenv("AI_TEXT_PROVIDER", "")).strip().lower()
+    def create_text_generator(provider: str | None = None) -> StructuredTextGenerator:
+        selected = (provider or os.getenv("LLM_TEXT_PROVIDER", "")).strip().lower()
         if selected == "deepseek":
             api_key = os.getenv("DEEPSEEK_API_KEY")
             if not api_key:
                 raise RuntimeError(
-                    "DEEPSEEK_API_KEY is required when AI_TEXT_PROVIDER=deepseek"
+                    "DEEPSEEK_API_KEY is required when LLM_TEXT_PROVIDER=deepseek"
                 )
-            return DeepSeekTextModel(
+            return DeepSeekTextGenerator(
                 api_key, os.getenv("DEEPSEEK_TEXT_MODEL", "deepseek-flash")
             )
         if selected == "gemini":
             api_key = os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise RuntimeError(
-                    "GEMINI_API_KEY is required when AI_TEXT_PROVIDER=gemini"
+                    "GEMINI_API_KEY is required when LLM_TEXT_PROVIDER=gemini"
                 )
-            return GeminiTextModel(
+            return GeminiTextGenerator(
                 api_key, os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash")
             )
         if selected == "openrouter":
             api_key = os.getenv("OPENROUTER_API_KEY")
             if not api_key:
                 raise RuntimeError(
-                    "OPENROUTER_API_KEY is required when AI_TEXT_PROVIDER=openrouter"
+                    "OPENROUTER_API_KEY is required when LLM_TEXT_PROVIDER=openrouter"
                 )
-            return OpenRouterTextModel(
+            return OpenRouterTextGenerator(
                 api_key,
                 os.getenv("OPENROUTER_TEXT_MODEL", "deepseek/deepseek-v4.1-flash"),
             )
         raise RuntimeError(
-            "AI_TEXT_PROVIDER must be 'deepseek', 'gemini', or 'openrouter'"
+            "LLM_TEXT_PROVIDER must be 'deepseek', 'gemini', or 'openrouter'"
         )
 
     @staticmethod

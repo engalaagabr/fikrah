@@ -7,12 +7,12 @@ Implemented as a modular monolith. Each product capability is a module; modules 
 ## Dependency direction
 
 ```text
-FastAPI routes  →  feature application services  →  feature contracts / AI ports
+FastAPI routes  →  feature application services  →  feature contracts / LLM ports
                                               ↑
-Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, AI providers)
+Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, LLM providers)
 ```
 
-Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration. `app/infrastructure/container.py` is the composition root that wires external adapters into authentication, search, and chat use cases; those use cases depend on injected capabilities and application-facing errors rather than concrete SMTP, Google, Qdrant, or AI provider modules.
+Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration. `app/infrastructure/container.py` is the API composition root; `app/infrastructure/worker_container.py` composes the Celery processing use case separately for the worker runtime.
 
 ## Module map
 
@@ -20,22 +20,22 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 |---|---|---|---|
 | Authentication | `app/auth/routes.py` | `app/auth/service.py`, schemas, shared auth dependencies, integration errors in `app/auth/ports.py` | SMTP and Google identity adapters under `app/infrastructure/`, wired through `app/infrastructure/container.py`; PostgreSQL token/session records |
 | Projects | `app/projects/routes.py` | `ProjectService`, result contracts in `app/projects/contracts.py` | `ProjectRepository` and PostgreSQL |
-| Notes | `app/notes/routes.py` | `NoteService`, commands in `app/notes/contracts.py` | PostgreSQL, processing-job outbox, Celery worker |
+| Notes | `app/notes/routes.py` | `NoteService`, `NoteProcessingService`, commands in `app/notes/contracts.py` | PostgreSQL sessions, worker processing repository, processing-job outbox, Celery worker |
 | Search | `app/search/routes.py` | `SemanticSearchService`, result contracts in `app/search/contracts.py` | Gemini embeddings and Qdrant adapter |
-| Connections | `app/connections/routes.py` | `KnowledgeConnectionService`, result contracts in `app/connections/contracts.py` | PostgreSQL connection records |
+| Connections | `app/connections/routes.py` | `KnowledgeConnectionService`, result contracts in `app/connections/contracts.py` | PostgreSQL read/write adapters in `app/connections/` and `app/infrastructure/persistence/` |
 | Chat | `app/chat/routes.py` | `ChatService`, commands and results in `app/chat/contracts.py` | Search use case, configured text-model adapter, PostgreSQL history |
-| AI | — | contracts, provider ports, prompt definitions | `app/infrastructure/ai/` adapters and provider factory |
-| Worker | — | asynchronous processing entry points | Celery/Redis, PostgreSQL, AI and Qdrant adapters |
+| LLM | — | result contracts, `StructuredTextGenerator` port, note/chat use cases, prompt definitions | `app/infrastructure/llm/` provider adapters and factory |
+| Worker | — | Celery task entry points in `app/worker/tasks.py` | Sync PostgreSQL sessions, Qdrant vector-store adapter, Celery/Redis |
 
-## AI boundaries
+## LLM boundaries
 
-`app/ai/contracts.py`, `ports.py`, and `prompts.py` define the application-facing AI data and behavior. Prompts are authored outside provider adapters. `app/infrastructure/ai/providers/` contains separate Gemini, DeepSeek, and OpenRouter adapters; only their shared OpenAI-compatible transport is implemented once. `AIProviderFactory` in `app/infrastructure/ai/factory.py` is infrastructure composition and reads deployment configuration; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
+`app/llm/contracts.py` and `ports.py` define shared results and the `StructuredTextGenerator` boundary. `app/llm/prompts.py` and `use_cases.py` own product prompts and chat workflows; `app/notes/processing.py` orchestrates note analysis and indexing through injected generator, embedding, persistence, and vector-store ports. Provider adapters under `app/infrastructure/llm/providers/` accept structured generation requests and contain only provider transport and response validation; the shared OpenAI-compatible transport is implemented once. `LLMProviderFactory` in `app/infrastructure/llm/factory.py` constructs adapters from deployment configuration; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
 
 ## Request and processing flow
 
 1. A route validates the request with a feature schema and passes the authenticated user ID to its application service.
 2. The application service applies ownership and product rules, persists the change, and schedules durable work where required.
-3. Celery workers load the persisted processing job, call application-facing AI contracts through infrastructure adapters, then save results and vectors.
+3. Celery task entry points delegate to `NoteProcessingService`; its persistence adapter coordinates revision checks and database transactions, while the Qdrant adapter owns vector operations.
 4. Search retrieves candidate vector IDs from Qdrant and validates ownership, project, completion state, and revision in PostgreSQL before returning notes.
 
 ## Rules for future changes
@@ -44,6 +44,8 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 - Keep prompts and response contracts out of provider adapter modules.
 - Keep external SDKs and service-specific configuration inside `app/infrastructure/`; wire adapters to use cases in the composition root.
 - Keep each feature's request/response schemas and use cases inside that feature module.
+- Keep Celery task functions as transport entry points; put note-processing orchestration in the application service and database/vector operations behind their adapters.
+- Let application services own transaction boundaries. Repositories flush changes but do not commit independently.
 - Pass the authenticated user ID from the API boundary; never accept an owner ID from a client request.
 - Keep PostgreSQL authoritative for user-owned records. Treat Qdrant results as candidates that must be verified against PostgreSQL.
 - Add cross-module dependencies through application-facing contracts/use cases, not by importing another module's route handlers.

@@ -1,11 +1,14 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.ai.contracts import NoteAnalysis
+from app.connections.persistence import refresh_note_connections
+from app.infrastructure import worker_container
+from app.llm.contracts import NoteAnalysis
 from app.models import (
     Note,
     NoteConnection,
@@ -18,9 +21,16 @@ from app.models.base import Base
 from app.worker.tasks import process_note_job
 
 
-class FakeTextModel:
-    def analyze_note(self, content: str) -> NoteAnalysis:
-        assert content == "Original thought"
+class FakeStructuredTextGenerator:
+    def generate_structured(
+        self,
+        *,
+        system_instruction: str,
+        user_content: str,
+        response_model: type[NoteAnalysis],
+    ) -> NoteAnalysis:
+        assert user_content == "Original thought"
+        assert response_model is NoteAnalysis
         return NoteAnalysis(
             title="Generated title",
             refinement_proposal="A clearer version of the thought.",
@@ -34,22 +44,36 @@ class FakeEmbeddingModel:
         return [0.1, 0.2, 0.3]
 
 
-class FakeQdrant:
+class FakeVectorStore:
     def __init__(self) -> None:
-        self.points = []
-        self.closed = False
+        self.points: list[SimpleNamespace] = []
+        self.deleted: UUID | None = None
 
-    def upsert(self, **kwargs: object) -> None:
-        self.points.extend(kwargs["points"])
+    def upsert_note(
+        self,
+        note_id: UUID,
+        vector: list[float],
+        *,
+        user_id: UUID,
+        project_id: UUID,
+        revision: int,
+        processing_generation: int,
+    ) -> None:
+        self.points.append(
+            SimpleNamespace(
+                id=str(note_id),
+                vector=vector,
+                payload={
+                    "user_id": str(user_id),
+                    "project_id": str(project_id),
+                    "revision": revision,
+                    "processing_generation": processing_generation,
+                },
+            )
+        )
 
-    def close(self) -> None:
-        self.closed = True
-
-    def get_collections(self) -> SimpleNamespace:
-        return SimpleNamespace(collections=[SimpleNamespace(name="notes")])
-
-    def delete(self, **kwargs: object) -> None:
-        self.deleted = kwargs
+    def delete_note(self, note_id: UUID) -> None:
+        self.deleted = note_id
 
 
 @pytest.fixture
@@ -87,26 +111,28 @@ def note_job_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
 def test_celery_job_analyzes_current_revision_and_upserts_embedding(
     note_job_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.worker import tasks
 
     database_path, job_id, note_id = note_job_db
-    qdrant = FakeQdrant()
+    vector_store = FakeVectorStore()
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel()
+        worker_container.LLMProviderFactory,
+        "create_text_generator",
+        lambda: FakeStructuredTextGenerator(),
     )
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel()
+        worker_container.LLMProviderFactory,
+        "create_embedding_model",
+        lambda: FakeEmbeddingModel(),
     )
-    monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
+    monkeypatch.setattr(worker_container, "QdrantNoteVectorStore", lambda: vector_store)
 
     result = process_note_job.apply(
         args=[str(job_id)], task_id="worker-task-1", throw=True
     )
     assert result.successful()
-    assert qdrant.closed
-    assert len(qdrant.points) == 1
-    assert qdrant.points[0].id == str(note_id)
-    assert qdrant.points[0].payload["revision"] == 1
+    assert len(vector_store.points) == 1
+    assert vector_store.points[0].id == str(note_id)
+    assert vector_store.points[0].payload["revision"] == 1
 
     engine = create_engine(f"sqlite:///{database_path}")
     with Session(engine) as session:
@@ -125,7 +151,6 @@ def test_celery_job_analyzes_current_revision_and_upserts_embedding(
 def test_stale_note_job_does_not_call_ai_or_overwrite_new_revision(
     note_job_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.worker import tasks
 
     database_path, job_id, note_id = note_job_db
     update_engine = create_engine(f"sqlite:///{database_path}")
@@ -138,11 +163,13 @@ def test_stale_note_job_does_not_call_ai_or_overwrite_new_revision(
     update_engine.dispose()
 
     class FailIfCalled:
-        def analyze_note(self, content: str) -> NoteAnalysis:
-            raise AssertionError("stale note revision must not call AI")
+        def generate_structured(self, **kwargs) -> NoteAnalysis:
+            raise AssertionError("stale note revision must not call LLM")
 
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled()
+        worker_container.LLMProviderFactory,
+        "create_text_generator",
+        lambda: FailIfCalled(),
     )
     result = process_note_job.apply(
         args=[str(job_id)], task_id="worker-task-2", throw=True
@@ -164,7 +191,6 @@ def test_stale_note_job_does_not_call_ai_or_overwrite_new_revision(
 def test_note_processing_links_shared_concepts_only_with_completed_project_notes(
     note_job_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.worker import tasks
 
     database_path, job_id, note_id = note_job_db
     engine = create_engine(f"sqlite:///{database_path}")
@@ -212,14 +238,18 @@ def test_note_processing_links_shared_concepts_only_with_completed_project_notes
         session.commit()
         same_project_id = same_project.id
 
-    qdrant = FakeQdrant()
+    vector_store = FakeVectorStore()
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel()
+        worker_container.LLMProviderFactory,
+        "create_text_generator",
+        lambda: FakeStructuredTextGenerator(),
     )
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel()
+        worker_container.LLMProviderFactory,
+        "create_embedding_model",
+        lambda: FakeEmbeddingModel(),
     )
-    monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
+    monkeypatch.setattr(worker_container, "QdrantNoteVectorStore", lambda: vector_store)
 
     result = process_note_job.apply(
         args=[str(job_id)], task_id="worker-task-links", throw=True
@@ -235,7 +265,6 @@ def test_note_processing_links_shared_concepts_only_with_completed_project_notes
 
 
 def test_reprocessing_note_removes_obsolete_connections(note_job_db) -> None:
-    from app.worker import tasks
 
     database_path, _, note_id = note_job_db
     engine = create_engine(f"sqlite:///{database_path}")
@@ -253,7 +282,7 @@ def test_reprocessing_note_removes_obsolete_connections(note_job_db) -> None:
         session.flush()
         session.add(NoteConnection(source_note_id=note_id, target_note_id=related.id))
         note.concepts = ["different"]
-        tasks._refresh_note_connections(session, note)
+        refresh_note_connections(session, note)
         session.commit()
         assert session.query(NoteConnection).count() == 0
     engine.dispose()
@@ -262,7 +291,6 @@ def test_reprocessing_note_removes_obsolete_connections(note_job_db) -> None:
 def test_stale_processing_generation_does_not_overwrite_new_refinement_request(
     note_job_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.worker import tasks
 
     database_path, job_id, note_id = note_job_db
     update_engine = create_engine(f"sqlite:///{database_path}")
@@ -274,11 +302,13 @@ def test_stale_processing_generation_does_not_overwrite_new_refinement_request(
     update_engine.dispose()
 
     class FailIfCalled:
-        def analyze_note(self, content: str) -> NoteAnalysis:
-            raise AssertionError("stale processing generation must not call AI")
+        def generate_structured(self, **kwargs) -> NoteAnalysis:
+            raise AssertionError("stale processing generation must not call LLM")
 
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled()
+        worker_container.LLMProviderFactory,
+        "create_text_generator",
+        lambda: FailIfCalled(),
     )
     result = process_note_job.apply(
         args=[str(job_id)], task_id="worker-task-old-generation", throw=True
@@ -337,14 +367,14 @@ def test_vector_cleanup_worker_removes_qdrant_point_and_marks_request_complete(
         cleanup_id = request.id
     engine.dispose()
 
-    qdrant = FakeQdrant()
-    monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
+    vector_store = FakeVectorStore()
+    monkeypatch.setattr(tasks, "QdrantNoteVectorStore", lambda: vector_store)
     result = delete_note_vector.apply(
         args=[str(cleanup_id)], task_id="cleanup-task", throw=True
     )
 
     assert result.successful()
-    assert qdrant.deleted["collection_name"] == "notes"
+    assert vector_store.deleted == note_id
     engine = create_engine(f"sqlite:///{database_path}")
     with Session(engine) as session:
         request = session.get(VectorCleanupRequest, cleanup_id)

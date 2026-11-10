@@ -76,7 +76,7 @@ class NoteProcessingJob(Base):
 
 
 class NoteConnection(Base):
-    """A note's directed AI-generated link to a related note."""
+    """A note's directed LLM-generated link to a related note."""
 
     __tablename__ = "note_connections"
     __table_args__ = (

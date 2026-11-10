@@ -39,13 +39,11 @@ class ProjectRepository:
     async def create(self, db: AsyncSession, user_id: UUID, name: str) -> Project:
         project = Project(user_id=user_id, name=name, is_general=False)
         db.add(project)
-        await db.commit()
-        await db.refresh(project)
+        await db.flush()
         return project
 
     async def save(self, db: AsyncSession, project: Project) -> Project:
-        await db.commit()
-        await db.refresh(project)
+        await db.flush()
         return project
 
     async def delete_with_owned_data(self, db: AsyncSession, project: Project) -> None:
@@ -85,4 +83,4 @@ class ProjectRepository:
             await db.execute(delete(Note).where(Note.id.in_(note_ids)))
 
         await db.delete(project)
-        await db.commit()
+        await db.flush()

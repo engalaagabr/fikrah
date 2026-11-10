@@ -6,7 +6,7 @@ FIKRAH can route note analysis and project chat through OpenRouter, using the us
 
 ## Behavior
 
-- `AIProviderFactory` creates an OpenRouter adapter using the OpenAI-compatible Chat Completions API at `https://openrouter.ai/api/v1`.
+- `LLMProviderFactory` creates an OpenRouter adapter using the OpenAI-compatible Chat Completions API at `https://openrouter.ai/api/v1`.
 - Note analysis and chat use JSON responses validated against FIKRAH's existing Pydantic response models.
 - Gemini remains the sole embedding provider, so changing text-generation providers does not change the vector embedding space.
 - The provider key is read by the backend worker from environment configuration and is not stored in source control or sent to the mobile application.
@@ -16,7 +16,7 @@ FIKRAH can route note analysis and project chat through OpenRouter, using the us
 Set these values in the deployment environment (or local `.env`):
 
 ```dotenv
-AI_TEXT_PROVIDER=openrouter
+LLM_TEXT_PROVIDER=openrouter
 OPENROUTER_API_KEY=
 OPENROUTER_TEXT_MODEL=deepseek/deepseek-v4.1-flash
 GEMINI_API_KEY=
@@ -26,5 +26,5 @@ GEMINI_API_KEY=
 
 ## Related Documentation
 
-- [AI provider factory and note worker](../note-processing/ai-provider-factory.md)
+- [LLM provider factory and note worker](../note-processing/llm-provider-factory.md)
 - [Note management](../note-management/overview.md)

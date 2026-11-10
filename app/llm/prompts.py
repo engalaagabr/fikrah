@@ -1,8 +1,8 @@
-"""System instructions and serialization for FIKRAH AI tasks."""
+"""System instructions and serialization for FIKRAH LLM tasks."""
 
 import json
 
-from app.ai.contracts import ChatHistoryMessage, ChatNoteContext
+from app.llm.contracts import ChatHistoryMessage, ChatNoteContext
 
 NOTE_ANALYSIS_SYSTEM_PROMPT = """You analyze personal knowledge notes. Return only a JSON object with exactly these fields:
 title, refinement_proposal, concepts.

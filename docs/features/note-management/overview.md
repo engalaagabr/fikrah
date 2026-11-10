@@ -12,7 +12,7 @@ The user approved the initial project-scoped note routes and processing states. 
 - The Backend generates note IDs. A missing title remains `null` while processing is pending; mobile can display `Processing…` without storing it as a real title.
 - Each create request includes an `Idempotency-Key`. Repeating the same key and body returns the created note; using that key with another body returns `409`. If the original note has since been deleted, replay returns `410` rather than recreating it.
 - Every saved edit increments the note revision, sets state to `queued`, and stores a processing intent. Old revision results must not overwrite newer edits.
-- Every processing request has a monotonically increasing generation so an older AI attempt cannot replace a newer retry or refinement regeneration for the same note revision.
+- Every processing request has a monotonically increasing generation so an older LLM attempt cannot replace a newer retry or refinement regeneration for the same note revision.
 - Processing states are `queued`, `processing`, `completed`, and `failed`. Mobile polls `GET /v1/notes/{note_id}`. Polling interval/backoff remains mobile integration guidance.
 - User-requested retry preserves the note and adds a processing intent for the current revision.
 - Editing note content immediately clears a proposal made for the previous content. Editing only the title keeps the proposal while starting a new processing generation.
@@ -28,7 +28,7 @@ All routes require `Authorization: Bearer <access_token>`.
 | `POST /v1/projects/{project_id}/notes` | Save captured text and begin processing. | `{ "content": "...", "title": "optional" }` plus `Idempotency-Key` header. | `201` with note ID, project, title, text, revision, processing state, and timestamps. |
 | `GET /v1/projects/{project_id}/notes` | Load all notes when opening or refreshing a project. | Project ID in path. No pagination initially. | Notes ordered by most recently updated. |
 | `GET /v1/notes/{note_id}` | Load a note and poll processing state. | Note ID in path. | Current note fields, concepts, optional refinement proposal, revision, processing generation, and state. |
-| `PATCH /v1/notes/{note_id}` | Save content/title edits and reprocess. | At least one of `content` or `title`. Sending `title: null` clears it so AI can generate a title. | Updated note at a new revision and `queued` state. |
+| `PATCH /v1/notes/{note_id}` | Save content/title edits and reprocess. | At least one of `content` or `title`. Sending `title: null` clears it so LLM can generate a title. | Updated note at a new revision and `queued` state. |
 | `DELETE /v1/notes/{note_id}` | Delete a note and its links. | Note ID in path. | `204`; vector cleanup proceeds asynchronously. |
 | `POST /v1/notes/{note_id}/processing-retries` | Retry processing after failure or on request. | Note ID in path. | `202` with the current note and `queued` state. |
 | `POST /v1/notes/{note_id}/refinement-regenerations` | Request another proposal for unchanged note content. | `{ "expected_processing_generation": 3 }` for the result currently displayed by the client. | `202` with the proposal cleared, incremented processing generation, and `queued` state. |
@@ -41,7 +41,7 @@ The initial schema limits user-provided titles to 240 characters and requires no
 
 The migrations add `notes`, `note_processing_jobs`, `note_connections`, `note_idempotency_keys`, and `vector_cleanup_requests`. Note content and current state are stored in PostgreSQL. Processing intents are committed with note writes before queue publication; the API never puts note content into Redis. Idempotency keys are scoped to the user and currently retained persistently.
 
-The Celery worker uses Redis as its broker, selects DeepSeek, Gemini, or OpenRouter for text analysis through `AIProviderFactory`, and uses Gemini embeddings for every note. Qdrant stores vectors under note IDs and metadata only; note text stays in PostgreSQL. The factory configuration and worker command are documented in `docs/features/note-processing/ai-provider-factory.md`.
+The Celery worker uses Redis as its broker, selects DeepSeek, Gemini, or OpenRouter for text analysis through `LLMProviderFactory`, and uses Gemini embeddings for every note. Qdrant stores vectors under note IDs and metadata only; note text stays in PostgreSQL. The factory configuration and worker command are documented in `docs/features/note-processing/llm-provider-factory.md`.
 
 ## Verification
 

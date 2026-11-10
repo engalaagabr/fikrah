@@ -8,8 +8,6 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.contracts import ChatHistoryMessage, ChatNoteContext
-from app.ai.ports import TextModel
 from app.chat.contracts import (
     ConversationCreateCommand,
     ConversationHistory,
@@ -19,6 +17,9 @@ from app.chat.contracts import (
     MessageSubmissionResult,
     SourceReference,
 )
+from app.llm.contracts import ChatHistoryMessage, ChatNoteContext
+from app.llm.ports import StructuredTextGenerator
+from app.llm.use_cases import answer_project_question
 from app.models import ChatConversation, ChatMessage, ChatMessageSource, Note, Project
 from app.search.errors import SearchUnavailableError
 from app.search.service import SearchProjectNotFound, SemanticSearchService
@@ -38,10 +39,10 @@ class ChatService:
     def __init__(
         self,
         search_service: SemanticSearchService,
-        text_model_factory: Callable[[], TextModel],
+        text_generator_factory: Callable[[], StructuredTextGenerator],
     ) -> None:
         self._search_service = search_service
-        self._text_model_factory = text_model_factory
+        self._text_generator_factory = text_generator_factory
 
     async def _owned_project(
         self, db: AsyncSession, user_id: UUID, project_id: UUID, *, lock: bool = False
@@ -199,15 +200,18 @@ class ChatService:
         ]
         matching_revisions = {match.note_id: match.revision for match in matches}
         try:
-            text_model = self._text_model_factory()
+            text_generator = self._text_generator_factory()
             answer = await asyncio.to_thread(
-                text_model.answer_question,
+                answer_project_question,
+                text_generator,
                 body.content,
                 note_context,
                 history,
             )
         except Exception as error:
-            raise ChatServiceError(503, "AI chat is temporarily unavailable") from error
+            raise ChatServiceError(
+                503, "LLM chat is temporarily unavailable"
+            ) from error
 
         conversation = await self._owned_conversation(
             db, user_id, conversation_id, lock=True

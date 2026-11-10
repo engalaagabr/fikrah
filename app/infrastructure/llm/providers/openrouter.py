@@ -1,11 +1,11 @@
 """OpenRouter text-generation adapter."""
 
-from app.infrastructure.ai.providers.openai_compatible import (
-    OpenAICompatibleTextModel,
+from app.infrastructure.llm.providers.openai_compatible import (
+    OpenAICompatibleStructuredTextGenerator,
 )
 
 
-class OpenRouterTextModel(OpenAICompatibleTextModel):
+class OpenRouterTextGenerator(OpenAICompatibleStructuredTextGenerator):
     """Route chat completions through OpenRouter's OpenAI-compatible API."""
 
     def __init__(self, api_key: str, model: str) -> None:
