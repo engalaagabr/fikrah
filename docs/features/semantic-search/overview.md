@@ -29,6 +29,8 @@ The response is an ordered array of matching note summaries. Each result contain
 
 Qdrant stores no raw note content. PostgreSQL is authoritative for access control and returned data. No database migration is required.
 
+The search service returns framework-independent `SearchMatch` results from `app/search/contracts.py`. The HTTP route maps these results to the public `SearchResult` schema, and project chat consumes the same application contract without depending on SQLAlchemy note records.
+
 ## Scope
 
 - Search is limited to the project identified in the route.
