@@ -13,7 +13,8 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.infrastructure.ai.factory import AIProviderFactory
+from app.infrastructure.llm.factory import LLMProviderFactory
+from app.llm.use_cases import analyze_note
 from app.models import Note, NoteConnection, NoteProcessingJob, VectorCleanupRequest
 from app.worker.celery_app import celery_app, settings
 
@@ -198,8 +199,8 @@ def process_note_job(self, job_id: str) -> None:
         note_id, user_id, project_id, revision, processing_generation, content = (
             note_snapshot
         )
-        analysis = AIProviderFactory.create_text_model().analyze_note(content)
-        embedding = AIProviderFactory.create_embedding_model().embed_note(content)
+        analysis = analyze_note(LLMProviderFactory.create_text_generator(), content)
+        embedding = LLMProviderFactory.create_embedding_model().embed_note(content)
         client, collection, dimensions = _qdrant_client()
         try:
             if len(embedding) != dimensions:

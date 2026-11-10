@@ -1,11 +1,11 @@
 """DeepSeek text-generation adapter."""
 
-from app.infrastructure.ai.providers.openai_compatible import (
-    OpenAICompatibleTextModel,
+from app.infrastructure.llm.providers.openai_compatible import (
+    OpenAICompatibleStructuredTextGenerator,
 )
 
 
-class DeepSeekTextModel(OpenAICompatibleTextModel):
+class DeepSeekTextGenerator(OpenAICompatibleStructuredTextGenerator):
     """Use DeepSeek's native OpenAI-compatible chat completions API."""
 
     def __init__(self, api_key: str, model: str) -> None:

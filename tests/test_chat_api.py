@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from uuid import UUID
@@ -9,9 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.ai.contracts import ChatAnswer
 from app.auth.security import create_access_token
 from app.database import get_db_session
+from app.llm.contracts import ChatAnswer
 from app.main import app as fastapi_app
 from app.models import (
     ChatConversation,
@@ -124,12 +125,18 @@ async def test_chat_persists_messages_and_only_authorized_citations(
             return FakeEmbeddingModel()
 
         @staticmethod
-        def create_text_model():
-            class FakeTextModel:
-                def answer_question(self, question, notes, history) -> ChatAnswer:
-                    assert question == "What did I save?"
-                    assert [item.note_id for item in notes] == [str(note_id)]
-                    assert history == []
+        def create_text_generator():
+            class FakeStructuredTextGenerator:
+                def generate_structured(
+                    self, *, system_instruction, user_content, response_model
+                ) -> ChatAnswer:
+                    request = json.loads(user_content)
+                    assert request["question"] == "What did I save?"
+                    assert [note["note_id"] for note in request["project_notes"]] == [
+                        str(note_id)
+                    ]
+                    assert request["conversation_history"] == []
+                    assert response_model is ChatAnswer
                     return ChatAnswer(
                         answer="You saved a reliable source note.",
                         supported=True,
@@ -139,13 +146,15 @@ async def test_chat_persists_messages_and_only_authorized_citations(
                         ],
                     )
 
-            return FakeTextModel()
+            return FakeStructuredTextGenerator()
 
     from app.chat import routes as chat_routes
     from app.search import routes as search_routes
 
     monkeypatch.setattr(
-        chat_routes.chat_service, "_text_model_factory", Factory.create_text_model
+        chat_routes.chat_service,
+        "_text_generator_factory",
+        Factory.create_text_generator,
     )
     monkeypatch.setattr(
         search_routes.search_service,
@@ -211,23 +220,28 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
             return FakeEmbeddingModel()
 
         @staticmethod
-        def create_text_model():
-            class FakeTextModel:
-                def answer_question(self, question, notes, history) -> ChatAnswer:
-                    assert notes == []
+        def create_text_generator():
+            class FakeStructuredTextGenerator:
+                def generate_structured(
+                    self, *, system_instruction, user_content, response_model
+                ) -> ChatAnswer:
+                    assert json.loads(user_content)["project_notes"] == []
+                    assert response_model is ChatAnswer
                     return ChatAnswer(
                         answer="I couldn't find an answer supported by your project notes.",
                         supported=False,
                         source_note_ids=[],
                     )
 
-            return FakeTextModel()
+            return FakeStructuredTextGenerator()
 
     from app.chat import routes as chat_routes
     from app.search import routes as search_routes
 
     monkeypatch.setattr(
-        chat_routes.chat_service, "_text_model_factory", Factory.create_text_model
+        chat_routes.chat_service,
+        "_text_generator_factory",
+        Factory.create_text_generator,
     )
     monkeypatch.setattr(
         search_routes.search_service,
@@ -274,16 +288,19 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
             return FakeEmbeddingModel()
 
         @staticmethod
-        def create_text_model():
-            class FakeTextModel:
-                def answer_question(self, question, notes, history) -> ChatAnswer:
+        def create_text_generator():
+            class FakeStructuredTextGenerator:
+                def generate_structured(
+                    self, *, system_instruction, user_content, response_model
+                ) -> ChatAnswer:
+                    assert response_model is ChatAnswer
                     return ChatAnswer(
                         answer="I couldn't find an answer supported by your project notes.",
                         supported=False,
                         source_note_ids=[],
                     )
 
-            return FakeTextModel()
+            return FakeStructuredTextGenerator()
 
     from app.chat import routes as chat_routes
     from app.chat import service as chat_service_module
@@ -307,7 +324,9 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
         return await original_to_thread(function, *args, **kwargs)
 
     monkeypatch.setattr(
-        chat_routes.chat_service, "_text_model_factory", Factory.create_text_model
+        chat_routes.chat_service,
+        "_text_generator_factory",
+        Factory.create_text_generator,
     )
     monkeypatch.setattr(
         search_routes.search_service,
