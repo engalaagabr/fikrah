@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Run the complete local backend stack: PostgreSQL, Redis, Qdrant, the FastAPI
-application, a Celery worker, and a Celery beat scheduler. This stack is for
-backend development; it does not define production deployment or expose
+Run the complete local backend stack: PostgreSQL, Redis, Qdrant, Mailpit, the
+FastAPI application, a Celery worker, and a Celery beat scheduler. This stack is
+for backend development; it does not define production deployment or expose
 services beyond the local machine.
 
 ## Services
@@ -15,6 +15,8 @@ services beyond the local machine.
 | Redis | `localhost:6379` | Docker named volume with AOF (`appendfsync everysec`) |
 | Qdrant HTTP API | `localhost:6333` | Docker named volume |
 | Qdrant gRPC API | `localhost:6334` | Docker named volume |
+| Mailpit SMTP | `localhost:1025` | In-memory message capture |
+| Mailpit web UI | `localhost:8025` | In-memory message capture |
 | FastAPI | `localhost:8000` | Stateless container |
 | Celery worker | Redis-backed queue | Stateless container |
 | Celery scheduler | Redis-backed beat schedule | Stateless container |
@@ -36,11 +38,12 @@ needed by the features you plan to use, then start the application stack:
 docker compose up -d --build
 ```
 
-Compose starts PostgreSQL, Redis, and Qdrant first. A one-shot migration
+Compose starts PostgreSQL, Redis, Qdrant, and Mailpit first. A one-shot migration
 container runs `alembic upgrade head`; the API, Celery worker, and Celery beat
 scheduler start after the migration succeeds and their dependencies are healthy.
 The API is available at `http://localhost:8000` and its health endpoint is
-`/health`.
+`/health`. Account emails are captured by Mailpit and can be read at
+`http://localhost:8025`; Compose routes API SMTP traffic internally to `mailpit:1025`.
 
 Host ports can be changed through the `FIKRAH_*_PORT` values in `.env` when a
 port is already in use. Keep `DATABASE_URL`, `REDIS_URL`, and `QDRANT_URL`
