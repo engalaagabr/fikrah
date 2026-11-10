@@ -15,6 +15,7 @@ from app.notes.contracts import (
     NoteUpdateCommand,
     ProposalActionCommand,
 )
+from app.notes.results import NoteResult
 from app.notes.schemas import NoteCreate, NoteUpdate, NoteView, ProposalAction
 from app.notes.service import NoteService, NoteServiceError
 
@@ -32,6 +33,22 @@ async def _execute(call: Awaitable[T]) -> T:
         raise HTTPException(
             status_code=error.status_code, detail=error.detail
         ) from error
+
+
+def _note_view(note: NoteResult) -> NoteView:
+    return NoteView(
+        id=note.id,
+        project_id=note.project_id,
+        title=note.title,
+        content=note.content,
+        concepts=list(note.concepts),
+        refinement_proposal=note.refinement_proposal,
+        revision=note.revision,
+        processing_generation=note.processing_generation,
+        processing_status=note.processing_status,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
 
 
 @router.post(
@@ -57,7 +74,7 @@ async def create_note(
             idempotency_key,
         )
     )
-    return NoteView.model_validate(note)
+    return _note_view(note)
 
 
 @router.get("/v1/projects/{project_id}/notes", response_model=list[NoteView])
@@ -65,13 +82,13 @@ async def list_project_notes(
     project_id: UUID, user: AuthenticatedUser, db: Db
 ) -> list[NoteView]:
     notes = await _execute(note_service.list_project_notes(db, user.id, project_id))
-    return [NoteView.model_validate(note) for note in notes]
+    return [_note_view(note) for note in notes]
 
 
 @router.get("/v1/notes/{note_id}", response_model=NoteView)
 async def get_note(note_id: UUID, user: AuthenticatedUser, db: Db) -> NoteView:
     note = await _execute(note_service.get_note(db, user.id, note_id))
-    return NoteView.model_validate(note)
+    return _note_view(note)
 
 
 @router.patch("/v1/notes/{note_id}", response_model=NoteView)
@@ -84,7 +101,7 @@ async def update_note(
         provided_fields=frozenset(body.model_fields_set),
     )
     note = await _execute(note_service.update_note(db, user.id, note_id, command))
-    return NoteView.model_validate(note)
+    return _note_view(note)
 
 
 @router.post(
@@ -96,7 +113,7 @@ async def retry_note_processing(
     note_id: UUID, user: AuthenticatedUser, db: Db
 ) -> NoteView:
     note = await _execute(note_service.retry_processing(db, user.id, note_id))
-    return NoteView.model_validate(note)
+    return _note_view(note)
 
 
 @router.post(
@@ -117,7 +134,7 @@ async def regenerate_refinement(
             ),
         )
     )
-    return NoteView.model_validate(note)
+    return _note_view(note)
 
 
 @router.post("/v1/notes/{note_id}/refinement-acceptance", response_model=NoteView)
@@ -134,7 +151,7 @@ async def accept_refinement(
             ),
         )
     )
-    return NoteView.model_validate(note)
+    return _note_view(note)
 
 
 @router.post("/v1/notes/{note_id}/refinement-rejections", response_model=NoteView)
@@ -151,7 +168,7 @@ async def reject_refinement(
             ),
         )
     )
-    return NoteView.model_validate(note)
+    return _note_view(note)
 
 
 @router.delete("/v1/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
