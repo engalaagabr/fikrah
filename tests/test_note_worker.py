@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.ai.contracts import NoteAnalysis
+from app.llm.contracts import NoteAnalysis
 from app.models import (
     Note,
     NoteConnection,
@@ -18,9 +18,16 @@ from app.models.base import Base
 from app.worker.tasks import process_note_job
 
 
-class FakeTextModel:
-    def analyze_note(self, content: str) -> NoteAnalysis:
-        assert content == "Original thought"
+class FakeStructuredTextGenerator:
+    def generate_structured(
+        self,
+        *,
+        system_instruction: str,
+        user_content: str,
+        response_model: type[NoteAnalysis],
+    ) -> NoteAnalysis:
+        assert user_content == "Original thought"
+        assert response_model is NoteAnalysis
         return NoteAnalysis(
             title="Generated title",
             refinement_proposal="A clearer version of the thought.",
@@ -92,10 +99,12 @@ def test_celery_job_analyzes_current_revision_and_upserts_embedding(
     database_path, job_id, note_id = note_job_db
     qdrant = FakeQdrant()
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel()
+        tasks.LLMProviderFactory,
+        "create_text_generator",
+        lambda: FakeStructuredTextGenerator(),
     )
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel()
+        tasks.LLMProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel()
     )
     monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
 
@@ -138,11 +147,11 @@ def test_stale_note_job_does_not_call_ai_or_overwrite_new_revision(
     update_engine.dispose()
 
     class FailIfCalled:
-        def analyze_note(self, content: str) -> NoteAnalysis:
-            raise AssertionError("stale note revision must not call AI")
+        def generate_structured(self, **kwargs) -> NoteAnalysis:
+            raise AssertionError("stale note revision must not call LLM")
 
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled()
+        tasks.LLMProviderFactory, "create_text_generator", lambda: FailIfCalled()
     )
     result = process_note_job.apply(
         args=[str(job_id)], task_id="worker-task-2", throw=True
@@ -214,10 +223,12 @@ def test_note_processing_links_shared_concepts_only_with_completed_project_notes
 
     qdrant = FakeQdrant()
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_text_model", lambda: FakeTextModel()
+        tasks.LLMProviderFactory,
+        "create_text_generator",
+        lambda: FakeStructuredTextGenerator(),
     )
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel()
+        tasks.LLMProviderFactory, "create_embedding_model", lambda: FakeEmbeddingModel()
     )
     monkeypatch.setattr(tasks, "_qdrant_client", lambda: (qdrant, "notes", 3))
 
@@ -274,11 +285,11 @@ def test_stale_processing_generation_does_not_overwrite_new_refinement_request(
     update_engine.dispose()
 
     class FailIfCalled:
-        def analyze_note(self, content: str) -> NoteAnalysis:
-            raise AssertionError("stale processing generation must not call AI")
+        def generate_structured(self, **kwargs) -> NoteAnalysis:
+            raise AssertionError("stale processing generation must not call LLM")
 
     monkeypatch.setattr(
-        tasks.AIProviderFactory, "create_text_model", lambda: FailIfCalled()
+        tasks.LLMProviderFactory, "create_text_generator", lambda: FailIfCalled()
     )
     result = process_note_job.apply(
         args=[str(job_id)], task_id="worker-task-old-generation", throw=True

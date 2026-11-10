@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.ports import EmbeddingModel
+from app.llm.ports import EmbeddingModel
 from app.models import Note, Project
 from app.search.contracts import SearchMatch
 from app.search.errors import SearchUnavailableError
