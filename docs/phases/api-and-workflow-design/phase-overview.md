@@ -16,7 +16,7 @@ Define the mobile-to-Backend API surface for confirmed FIKRAH workflows, keeping
 
 ## Deferred Product Decisions
 
-- Explicit language selection and mixed-language chat behavior.
+- Supported languages for notes, transcription text, refinement, and search; mixed-language chat behavior.
 - Mobile polling interval/backoff guidance and production worker capacity.
 - Pagination for larger note, conversation, and graph collections.
 
