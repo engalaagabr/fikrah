@@ -4,26 +4,26 @@
 
 ## Confirmed Constraints
 
-- Saving a note starts AI processing automatically.
-- Saving an edit to an existing note also starts AI processing automatically.
+- Saving a note starts LLM processing automatically.
+- Saving an edit to an existing note also starts LLM processing automatically.
 - The Backend generates note IDs.
 - Mobile polls the Backend to read note processing state.
 - The user can request processing again.
-- AI generates a title when the user did not supply one.
+- LLM generates a title when the user did not supply one.
 - Audio and PDF text extraction happens on mobile. The Backend receives text only.
-- AI processing can produce concepts (up to eight), a project-scoped cluster, knowledge links, and a rewrite proposal.
+- LLM processing can produce concepts (up to eight), a project-scoped cluster, knowledge links, and a rewrite proposal.
 - A rewrite proposal is surfaced only if the note has not changed while processing. Accepting it replaces the note text; rejecting it discards the proposal.
 - A processing failure must not lose the note, and the user must be able to retry.
 
 ## Mobile Integration Contract
 
-The Backend owns the durable processing lifecycle. The mobile client receives a queued note and polls its processing state; it does not run or resume server-side AI work.
+The Backend owns the durable processing lifecycle. The mobile client receives a queued note and polls its processing state; it does not run or resume server-side LLM work.
 
 ## Approved Lifecycle
 
 1. Mobile submits note text, its selected project, and an optional user-provided title. The Backend generates the note ID.
 2. The API verifies that the user owns the project, persists the note, and starts a durable processing job.
-3. The API responds with the note and a processing state without waiting for AI completion.
+3. The API responds with the note and a processing state without waiting for LLM completion.
 4. A Backend worker processes the saved text. It generates a title only when the user did not provide one, then stores the supported insights and any rewrite proposal.
 5. Mobile polls the note and its processing state until the result is ready. Reopening the app does not restart completed work.
 6. A failed job leaves the note intact. The user can ask the Backend to retry processing.

@@ -2,7 +2,7 @@
 
 ## Delivered Scope
 
-- Generate note-to-note links after successful AI processing when at least one extracted concept matches a completed note in the same user's project.
+- Generate note-to-note links after successful LLM processing when at least one extracted concept matches a completed note in the same user's project.
 - Refresh outgoing links when a note is processed again; keep at most ten strongest candidates per processing run.
 - Provide authenticated note-related and project-graph retrieval routes.
 - Keep graph results within the authenticated user and selected project, and omit notes whose processing is not complete.

@@ -1,1 +1,1 @@
-"""External AI provider adapters."""
+"""External LLM provider adapters."""

@@ -1,4 +1,4 @@
-"""Application composition for configured AI ports."""
+"""Application composition for configured LLM ports."""
 
 import os
 

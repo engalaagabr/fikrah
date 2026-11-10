@@ -1,4 +1,4 @@
-"""Application-facing interfaces implemented by AI infrastructure adapters."""
+"""Application-facing interfaces implemented by LLM infrastructure adapters."""
 
 from typing import Protocol
 

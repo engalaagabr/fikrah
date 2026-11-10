@@ -1,1 +1,1 @@
-"""AI provider integrations used by asynchronous Backend workflows."""
+"""LLM provider integrations used by asynchronous Backend workflows."""

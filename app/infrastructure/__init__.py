@@ -1,1 +1,1 @@
-"""Infrastructure adapters for databases, AI providers, and background work."""
+"""Infrastructure adapters for databases, LLM providers, and background work."""

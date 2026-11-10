@@ -24,5 +24,5 @@ Provide secure personal accounts for the mobile application and enforce a clear 
 ## Out of Scope
 
 - Mobile UI and platform credential storage implementation.
-- Note, project CRUD, AI workflows, and social login providers other than Google.
+- Note, project CRUD, LLM workflows, and social login providers other than Google.
 - Deployment-specific SMTP, Google OAuth client, or production signing-secret provisioning.

@@ -2,11 +2,11 @@
 
 ## Status
 
-Implemented. This feature lets a user accept, reject, or regenerate the AI rewrite proposal produced during note processing.
+Implemented. This feature lets a user accept, reject, or regenerate the LLM rewrite proposal produced during note processing.
 
 ## Confirmed behavior
 
-- AI proposes a rewrite in the original note's language while preserving its meaning.
+- LLM proposes a rewrite in the original note's language while preserving its meaning.
 - The proposal does not replace note content until the user accepts it.
 - Accepting permanently replaces the current content with the proposal; no previous-content version is retained. The accepted text is processed like any saved edit.
 - Rejecting removes the proposal and leaves note content unchanged. The user can later request another wording.
@@ -28,7 +28,7 @@ All routes require authentication and verify ownership through the note's user I
 
 ## Persistence and processing
 
-PostgreSQL stores the proposal and processing generation. The generation is copied to durable processing-job rows. Celery workers verify both the note revision and generation before beginning and before committing AI results. Regeneration reuses the note-processing worker and provider factory. The stored note content remains unchanged while the worker refreshes analysis and writes an embedding for the same content.
+PostgreSQL stores the proposal and processing generation. The generation is copied to durable processing-job rows. Celery workers verify both the note revision and generation before beginning and before committing LLM results. Regeneration reuses the note-processing worker and provider factory. The stored note content remains unchanged while the worker refreshes analysis and writes an embedding for the same content.
 
 ## Verification
 
