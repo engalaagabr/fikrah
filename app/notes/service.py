@@ -22,6 +22,7 @@ from app.notes.contracts import (
     NoteCreateCommand,
     NoteUpdateCommand,
     ProposalActionCommand,
+    ProposalUpdateCommand,
 )
 from app.notes.results import NoteResult
 
@@ -227,6 +228,24 @@ class NoteService:
         note.processing_generation += 1
         note.processing_status = "queued"
         self._enqueue(db, note)
+        await db.commit()
+        await db.refresh(note)
+        return self._result(note)
+
+    async def update_refinement_proposal(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        note_id: UUID,
+        body: ProposalUpdateCommand,
+    ) -> NoteResult:
+        note = await self._owned_note(db, user_id, note_id, lock=True)
+        if note.processing_generation != body.expected_processing_generation:
+            raise NoteServiceError(409, "The note processing result has changed")
+        if note.processing_status != "completed" or note.refinement_proposal is None:
+            raise NoteServiceError(409, "No completed refinement proposal is available")
+        note.refinement_proposal = body.refinement_proposal
+        note.processing_generation += 1
         await db.commit()
         await db.refresh(note)
         return self._result(note)

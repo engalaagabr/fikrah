@@ -19,3 +19,9 @@ class NoteUpdateCommand:
 @dataclass(frozen=True, slots=True)
 class ProposalActionCommand:
     expected_processing_generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProposalUpdateCommand:
+    expected_processing_generation: int
+    refinement_proposal: str

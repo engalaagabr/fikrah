@@ -60,6 +60,18 @@ class ProposalAction(BaseModel):
     expected_processing_generation: int = Field(ge=1)
 
 
+class ProposalUpdate(ProposalAction):
+    refinement_proposal: str = Field(min_length=1)
+
+    @field_validator("refinement_proposal")
+    @classmethod
+    def validate_refinement_proposal(cls, value: str) -> str:
+        proposal = value.strip()
+        if not proposal:
+            raise ValueError("Refinement proposal cannot be blank")
+        return proposal
+
+
 class NoteView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

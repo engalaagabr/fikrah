@@ -51,6 +51,7 @@ Authentication, user accounts, authorization, and enforcement of this data isola
 The LLM layer is responsible for understanding, refining, organizing, connecting, and retrieving knowledge.
 
 An LLM refinement proposal must remain in the same language as the original note.
+Users may edit a refinement proposal before accepting it. Editing the proposal does not change the note; accepting it replaces the note text permanently and triggers processing of the accepted text.
 
 For LLM chat, answers must be grounded in notes from the selected project. If those notes do not contain enough evidence to answer, the assistant must clearly say that it could not find a supported answer there.
 
@@ -75,10 +76,9 @@ The LLM and Backend owner is responsible for requirements discovery, API design 
 
 Confirm these behaviors with the user before treating them as requirements or designing endpoints around them:
 
-- How users edit a proposed refinement before accepting or rejecting it.
 - Which languages the application must understand and use for notes, transcriptions, and search.
 - Which language chat should use when the user's question and the relevant notes have different languages, or the project contains notes in multiple languages.
 
 ## Implemented Backend Scope
 
-The initial API surface, authentication flows, project and note lifecycle, LLM processing, semantic search, knowledge connections, graph retrieval, and project-scoped chat have been implemented. See [`docs/features/api-contract-design/api-surface-proposal.md`](../features/api-contract-design/api-surface-proposal.md) for endpoint behavior and [`docs/architecture/layered-modular-architecture.md`](../architecture/layered-modular-architecture.md) for module boundaries. Remaining product decisions above should be resolved before expanding language-specific behavior or adding manual editing of a generated proposal.
+The initial API surface, authentication flows, project and note lifecycle, LLM processing, semantic search, knowledge connections, graph retrieval, and project-scoped chat have been implemented. See [`docs/features/api-contract-design/api-surface-proposal.md`](../features/api-contract-design/api-surface-proposal.md) for endpoint behavior and [`docs/architecture/layered-modular-architecture.md`](../architecture/layered-modular-architecture.md) for module boundaries. Remaining language decisions above should be resolved before expanding language-specific behavior.

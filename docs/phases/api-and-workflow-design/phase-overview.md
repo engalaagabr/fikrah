@@ -16,7 +16,6 @@ Define the mobile-to-Backend API surface for confirmed FIKRAH workflows, keeping
 
 ## Deferred Product Decisions
 
-- Manual editing of a generated refinement proposal before acceptance.
 - Explicit language selection and mixed-language chat behavior.
 - Mobile polling interval/backoff guidance and production worker capacity.
 - Pagination for larger note, conversation, and graph collections.
