@@ -23,6 +23,7 @@ from app.notes.contracts import (
     NoteUpdateCommand,
     ProposalActionCommand,
 )
+from app.notes.results import NoteResult
 
 
 class NoteServiceError(Exception):
@@ -70,7 +71,7 @@ class NoteService:
         project_id: UUID,
         body: NoteCreateCommand,
         idempotency_key: str,
-    ) -> Note:
+    ) -> NoteResult:
         # Holding the project row lock serializes creation against project deletion.
         await self._owned_project(db, user_id, project_id, lock=True)
         fingerprint = self._request_fingerprint(body, project_id)
@@ -81,7 +82,8 @@ class NoteService:
             )
         )
         if previous is not None:
-            return await self._replay_idempotent_note(db, previous, fingerprint)
+            note = await self._replay_idempotent_note(db, previous, fingerprint)
+            return self._result(note)
 
         note = Note(
             user_id=user_id,
@@ -118,9 +120,10 @@ class NoteService:
             )
             if previous is None:
                 raise
-            return await self._replay_idempotent_note(db, previous, fingerprint)
+            note = await self._replay_idempotent_note(db, previous, fingerprint)
+            return self._result(note)
         await db.refresh(note)
-        return note
+        return self._result(note)
 
     @staticmethod
     async def _replay_idempotent_note(
@@ -139,21 +142,24 @@ class NoteService:
 
     async def list_project_notes(
         self, db: AsyncSession, user_id: UUID, project_id: UUID
-    ) -> list[Note]:
+    ) -> list[NoteResult]:
         await self._owned_project(db, user_id, project_id)
         result = await db.scalars(
             select(Note)
             .where(Note.user_id == user_id, Note.project_id == project_id)
             .order_by(Note.updated_at.desc(), Note.id)
         )
-        return list(result)
+        return [self._result(note) for note in result]
 
-    async def get_note(self, db: AsyncSession, user_id: UUID, note_id: UUID) -> Note:
-        return await self._owned_note(db, user_id, note_id)
+    async def get_note(
+        self, db: AsyncSession, user_id: UUID, note_id: UUID
+    ) -> NoteResult:
+        note = await self._owned_note(db, user_id, note_id)
+        return self._result(note)
 
     async def update_note(
         self, db: AsyncSession, user_id: UUID, note_id: UUID, body: NoteUpdateCommand
-    ) -> Note:
+    ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if "content" in body.provided_fields:
             if body.content is None:
@@ -168,18 +174,18 @@ class NoteService:
         self._enqueue(db, note)
         await db.commit()
         await db.refresh(note)
-        return note
+        return self._result(note)
 
     async def retry_processing(
         self, db: AsyncSession, user_id: UUID, note_id: UUID
-    ) -> Note:
+    ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         note.processing_generation += 1
         note.processing_status = "queued"
         self._enqueue(db, note)
         await db.commit()
         await db.refresh(note)
-        return note
+        return self._result(note)
 
     async def regenerate_refinement(
         self,
@@ -187,7 +193,7 @@ class NoteService:
         user_id: UUID,
         note_id: UUID,
         body: ProposalActionCommand,
-    ) -> Note:
+    ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
             raise NoteServiceError(409, "The note processing result has changed")
@@ -201,7 +207,7 @@ class NoteService:
         self._enqueue(db, note)
         await db.commit()
         await db.refresh(note)
-        return note
+        return self._result(note)
 
     async def accept_refinement(
         self,
@@ -209,7 +215,7 @@ class NoteService:
         user_id: UUID,
         note_id: UUID,
         body: ProposalActionCommand,
-    ) -> Note:
+    ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
             raise NoteServiceError(409, "The note processing result has changed")
@@ -223,7 +229,7 @@ class NoteService:
         self._enqueue(db, note)
         await db.commit()
         await db.refresh(note)
-        return note
+        return self._result(note)
 
     async def reject_refinement(
         self,
@@ -231,14 +237,14 @@ class NoteService:
         user_id: UUID,
         note_id: UUID,
         body: ProposalActionCommand,
-    ) -> Note:
+    ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
             raise NoteServiceError(409, "The note processing result has changed")
         note.refinement_proposal = None
         await db.commit()
         await db.refresh(note)
-        return note
+        return self._result(note)
 
     async def delete_note(self, db: AsyncSession, user_id: UUID, note_id: UUID) -> None:
         note = await self._owned_note(db, user_id, note_id, lock=True)
@@ -257,6 +263,22 @@ class NoteService:
         )
         await db.delete(note)
         await db.commit()
+
+    @staticmethod
+    def _result(note: Note) -> NoteResult:
+        return NoteResult(
+            id=note.id,
+            project_id=note.project_id,
+            title=note.title,
+            content=note.content,
+            concepts=tuple(note.concepts or ()),
+            refinement_proposal=note.refinement_proposal,
+            revision=note.revision,
+            processing_generation=note.processing_generation,
+            processing_status=note.processing_status,
+            created_at=note.created_at,
+            updated_at=note.updated_at,
+        )
 
     @staticmethod
     def _enqueue(db: AsyncSession, note: Note) -> None:
