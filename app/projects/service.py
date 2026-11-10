@@ -31,6 +31,8 @@ class ProjectService:
         self, db: AsyncSession, user_id: UUID, name: str
     ) -> ProjectResult:
         project = await self._repository.create(db, user_id, name)
+        await db.commit()
+        await db.refresh(project)
         return self._result(project)
 
     async def get_project(
@@ -49,6 +51,8 @@ class ProjectService:
             raise ProjectNotFound
         project.name = name
         project = await self._repository.save(db, project)
+        await db.commit()
+        await db.refresh(project)
         return self._result(project)
 
     async def delete_project(
@@ -60,6 +64,7 @@ class ProjectService:
         if project.is_general:
             raise GeneralProjectProtected
         await self._repository.delete_with_owned_data(db, project)
+        await db.commit()
 
     @staticmethod
     def _result(project: Project) -> ProjectResult:
