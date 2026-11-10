@@ -37,7 +37,7 @@ Deletes the conversation, all of its messages, and citation records. Deleting a 
 - The text model receives the current question, the latest 12 conversation messages, and authorized note content. Conversation history can clarify a follow-up question but is not evidence for factual claims.
 - Returned source IDs are checked against the authorized retrieval set. Invalid or out-of-scope IDs are never returned as citations.
 - The configured OpenRouter, DeepSeek, or Gemini text adapter generates the answer. The response is returned as one complete message, without token streaming.
-- AI or retrieval service failures return `503`; the question and assistant response are persisted together only after a complete AI response is available.
+- LLM or retrieval service failures return `503`; the question and assistant response are persisted together only after a complete LLM response is available.
 
 ## Persistence
 

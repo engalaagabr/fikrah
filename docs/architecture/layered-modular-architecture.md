@@ -7,12 +7,12 @@ Implemented as a modular monolith. Each product capability is a module; modules 
 ## Dependency direction
 
 ```text
-FastAPI routes  →  feature application services  →  feature contracts / AI ports
+FastAPI routes  →  feature application services  →  feature contracts / LLM ports
                                               ↑
-Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, AI providers)
+Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, LLM providers)
 ```
 
-Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration. `app/infrastructure/container.py` is the composition root that wires external adapters into authentication, search, and chat use cases; those use cases depend on injected capabilities and application-facing errors rather than concrete SMTP, Google, Qdrant, or AI provider modules.
+Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration. `app/infrastructure/container.py` is the composition root that wires external adapters into authentication, search, and chat use cases; those use cases depend on injected capabilities and application-facing errors rather than concrete SMTP, Google, Qdrant, or LLM provider modules.
 
 ## Module map
 
@@ -24,18 +24,18 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 | Search | `app/search/routes.py` | `SemanticSearchService`, result contracts in `app/search/contracts.py` | Gemini embeddings and Qdrant adapter |
 | Connections | `app/connections/routes.py` | `KnowledgeConnectionService`, result contracts in `app/connections/contracts.py` | PostgreSQL connection records |
 | Chat | `app/chat/routes.py` | `ChatService`, commands and results in `app/chat/contracts.py` | Search use case, configured text-model adapter, PostgreSQL history |
-| AI | — | contracts, provider ports, prompt definitions | `app/infrastructure/ai/` adapters and provider factory |
-| Worker | — | asynchronous processing entry points | Celery/Redis, PostgreSQL, AI and Qdrant adapters |
+| LLM | — | contracts, provider ports, prompt definitions | `app/infrastructure/ai/` adapters and provider factory |
+| Worker | — | asynchronous processing entry points | Celery/Redis, PostgreSQL, LLM and Qdrant adapters |
 
-## AI boundaries
+## LLM boundaries
 
-`app/ai/contracts.py`, `ports.py`, and `prompts.py` define the application-facing AI data and behavior. Prompts are authored outside provider adapters. `app/infrastructure/ai/providers/` contains separate Gemini, DeepSeek, and OpenRouter adapters; only their shared OpenAI-compatible transport is implemented once. `AIProviderFactory` in `app/infrastructure/ai/factory.py` is infrastructure composition and reads deployment configuration; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
+`app/ai/contracts.py`, `ports.py`, and `prompts.py` define the application-facing LLM data and behavior. Prompts are authored outside provider adapters. `app/infrastructure/ai/providers/` contains separate Gemini, DeepSeek, and OpenRouter adapters; only their shared OpenAI-compatible transport is implemented once. `AIProviderFactory` in `app/infrastructure/ai/factory.py` is infrastructure composition and reads deployment configuration; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
 
 ## Request and processing flow
 
 1. A route validates the request with a feature schema and passes the authenticated user ID to its application service.
 2. The application service applies ownership and product rules, persists the change, and schedules durable work where required.
-3. Celery workers load the persisted processing job, call application-facing AI contracts through infrastructure adapters, then save results and vectors.
+3. Celery workers load the persisted processing job, call application-facing LLM contracts through infrastructure adapters, then save results and vectors.
 4. Search retrieves candidate vector IDs from Qdrant and validates ownership, project, completion state, and revision in PostgreSQL before returning notes.
 
 ## Rules for future changes

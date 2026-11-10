@@ -18,7 +18,7 @@ Create the smallest runnable foundation for the FIKRAH Backend using the user-se
 
 ## Original Foundation Scope (Completed)
 
-- Product CRUD and AI workflows were outside this phase's initial scope and were delivered by later feature phases.
+- Product CRUD and LLM workflows were outside this phase's initial scope and were delivered by later feature phases.
 
 ## Completion Criteria
 

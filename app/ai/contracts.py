@@ -1,4 +1,4 @@
-"""Validated input and output contracts shared across AI use cases and adapters."""
+"""Validated input and output contracts shared across LLM use cases and adapters."""
 
 from pydantic import BaseModel, Field
 

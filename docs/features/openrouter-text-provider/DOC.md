@@ -26,5 +26,5 @@ GEMINI_API_KEY=
 
 ## Related Documentation
 
-- [AI provider factory and note worker](../note-processing/ai-provider-factory.md)
+- [LLM provider factory and note worker](../note-processing/ai-provider-factory.md)
 - [Note management](../note-management/overview.md)

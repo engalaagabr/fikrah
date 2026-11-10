@@ -1,4 +1,4 @@
-"""System instructions and serialization for FIKRAH AI tasks."""
+"""System instructions and serialization for FIKRAH LLM tasks."""
 
 import json
 

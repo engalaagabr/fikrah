@@ -207,7 +207,7 @@ class ChatService:
                 history,
             )
         except Exception as error:
-            raise ChatServiceError(503, "AI chat is temporarily unavailable") from error
+            raise ChatServiceError(503, "LLM chat is temporarily unavailable") from error
 
         conversation = await self._owned_conversation(
             db, user_id, conversation_id, lock=True

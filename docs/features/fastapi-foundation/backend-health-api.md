@@ -33,4 +33,4 @@ python -m pytest
 
 ## Decisions Kept Open
 
-This document records the original health-endpoint foundation. PostgreSQL, Qdrant, authentication, and AI provider integrations have since been implemented; refer to the current feature and architecture documentation for their status.
+This document records the original health-endpoint foundation. PostgreSQL, Qdrant, authentication, and LLM provider integrations have since been implemented; refer to the current feature and architecture documentation for their status.

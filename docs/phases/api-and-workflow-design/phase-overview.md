@@ -8,7 +8,7 @@ Define the mobile-to-Backend API surface for confirmed FIKRAH workflows, keeping
 
 ## Scope
 
-- Map authentication, account, project, note, AI processing, refinement, connections, search, chat, and graph workflows to a proposed API surface.
+- Map authentication, account, project, note, LLM processing, refinement, connections, search, chat, and graph workflows to a proposed API surface.
 - State the purpose, caller workflow, request information, and response information for each proposed endpoint.
 - Authentication and project routes are implemented. The user has approved the initial note CRUD and processing routes.
 - Keep confirmed product requirements separate from remaining product decisions.

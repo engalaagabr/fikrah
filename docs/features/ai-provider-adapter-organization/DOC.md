@@ -1,8 +1,8 @@
-# AI Provider Adapter Organization
+# LLM Provider Adapter Organization
 
 ## Goal
 
-Keep each AI provider's integration boundary explicit while sharing only behavior that is truly common. This separates native DeepSeek from OpenRouter even though both expose an OpenAI-compatible API.
+Keep each LLM provider's integration boundary explicit while sharing only behavior that is truly common. This separates native DeepSeek from OpenRouter even though both expose an OpenAI-compatible API.
 
 ## Module Responsibilities
 

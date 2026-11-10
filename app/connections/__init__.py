@@ -1,1 +1,1 @@
-"""AI-generated knowledge connections and graph retrieval."""
+"""LLM-generated knowledge connections and graph retrieval."""

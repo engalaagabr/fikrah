@@ -14,7 +14,7 @@ settings for retry and stale-job recovery behavior.
 - The dispatcher runs every 30 seconds, dispatches at most 100 rows per work
   type, and recovers queued jobs whose dispatch is older than five minutes.
 - Processing jobs that remain active for 15 minutes become eligible for
-  recovery. Operators can tune this to their AI provider latency.
+  recovery. Operators can tune this to their LLM provider latency.
 - The Redis visibility timeout defaults to one hour.
 - All integer settings must be positive; invalid values fail worker startup.
 

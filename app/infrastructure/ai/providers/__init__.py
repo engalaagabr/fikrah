@@ -1,1 +1,1 @@
-"""Provider-specific AI infrastructure adapters."""
+"""Provider-specific LLM infrastructure adapters."""

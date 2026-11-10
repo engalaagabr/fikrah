@@ -1,4 +1,4 @@
-"""Project-scoped AI conversation persistence models."""
+"""Project-scoped LLM conversation persistence models."""
 
 from datetime import datetime
 from uuid import UUID, uuid4
