@@ -262,15 +262,47 @@ class ChatService:
 
         supported = answer.supported and bool(valid_sources)
         answer_content = answer.answer.strip()
-        if not supported and answer.supported:
-            answer_content = (
-                "I couldn't find an answer supported by your project notes."
+        if (answer.supported and not supported) or not answer_content:
+            # A generated answer without a valid current citation is not safe to
+            # show. Ask the same model for a localized refusal with no evidence
+            # available, instead of returning a fixed English fallback.
+            await db.rollback()
+            try:
+                refusal = await asyncio.to_thread(
+                    answer_project_question,
+                    text_generator,
+                    body.content,
+                    [],
+                    history,
+                )
+            except Exception as error:
+                raise ChatServiceError(
+                    503, "LLM chat is temporarily unavailable"
+                ) from error
+            answer_content = refusal.answer.strip()
+            if refusal.supported or not answer_content:
+                raise ChatServiceError(
+                    503, "LLM could not produce a supported chat response"
+                )
+            # The refusal generation may take time. Reacquire the conversation
+            # lock and reject the response if another message arrived meanwhile.
+            conversation = await self._owned_conversation(
+                db, user_id, conversation_id, lock=True
             )
-        elif not answer_content:
+            latest_message_id = await db.scalar(
+                select(ChatMessage.id)
+                .where(ChatMessage.conversation_id == conversation.id)
+                .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+                .limit(1)
+            )
+            if latest_message_id != last_message_id:
+                await db.rollback()
+                raise ChatServiceError(
+                    409,
+                    "The conversation changed while the answer was being generated. Retry the message.",
+                )
             supported = False
-            answer_content = (
-                "I couldn't find an answer supported by your project notes."
-            )
+            valid_sources = []
 
         now = datetime.now(timezone.utc)
         user_message = ChatMessage(
