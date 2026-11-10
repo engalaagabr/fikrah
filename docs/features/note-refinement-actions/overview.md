@@ -8,6 +8,7 @@ Implemented. This feature lets a user accept, reject, or regenerate the LLM rewr
 
 - LLM proposes a rewrite in the original note's language while preserving its meaning.
 - The proposal does not replace note content until the user accepts it.
+- The user may edit the proposal before accepting it. Saving an edited proposal leaves note content unchanged and returns a new `processing_generation`; acceptance, rejection, or another edit must use that latest generation.
 - Accepting permanently replaces the current content with the proposal; no previous-content version is retained. The accepted text is processed like any saved edit.
 - Rejecting removes the proposal and leaves note content unchanged. The user can later request another wording.
 - Regenerating removes the current proposal and queues analysis of the unchanged content.
@@ -21,10 +22,11 @@ All routes require authentication and verify ownership through the note's user I
 | Endpoint | Purpose and timing | Request | Response |
 | --- | --- | --- | --- |
 | `POST /v1/notes/{note_id}/refinement-regenerations` | Request a new proposal after rejecting or when the user wants another wording. | `{ "expected_processing_generation": 3 }` | `202` with the current note, cleared proposal, incremented processing generation, and `queued` state. |
+| `PATCH /v1/notes/{note_id}/refinement-proposal` | Save the user's edited proposal before acceptance. | `{ "expected_processing_generation": 3, "refinement_proposal": "Edited text" }` | `200` with the edited proposal, unchanged note content, and incremented processing generation. |
 | `POST /v1/notes/{note_id}/refinement-acceptance` | Apply the displayed proposal and begin processing the accepted content. | `{ "expected_processing_generation": 3 }` | `200` with replaced content, cleared proposal, incremented note revision and processing generation, and `queued` state. |
 | `POST /v1/notes/{note_id}/refinement-rejections` | Reject the displayed proposal. | `{ "expected_processing_generation": 3 }` | `200` with the proposal removed and note content unchanged. |
 
-`GET /v1/notes/{note_id}` includes `processing_generation`. A generation changes whenever a processing attempt is requested, a note is saved, or a proposal is accepted/regenerated. Workers discard results whose revision or generation is no longer current.
+`GET /v1/notes/{note_id}` includes `processing_generation`. A generation changes whenever a processing attempt is requested, a note is saved, or a proposal is edited, accepted, or regenerated. Workers discard results whose revision or generation is no longer current. Editing requires a completed processing result and a nonblank proposal; stale generations or a missing proposal return `409`.
 
 ## Persistence and processing
 

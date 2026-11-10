@@ -15,9 +15,16 @@ from app.notes.contracts import (
     NoteCreateCommand,
     NoteUpdateCommand,
     ProposalActionCommand,
+    ProposalUpdateCommand,
 )
 from app.notes.results import NoteResult
-from app.notes.schemas import NoteCreate, NoteUpdate, NoteView, ProposalAction
+from app.notes.schemas import (
+    NoteCreate,
+    NoteUpdate,
+    NoteView,
+    ProposalAction,
+    ProposalUpdate,
+)
 from app.notes.service import NoteServiceError
 
 router = APIRouter(tags=["notes"])
@@ -131,6 +138,24 @@ async def regenerate_refinement(
             note_id,
             ProposalActionCommand(
                 expected_processing_generation=body.expected_processing_generation
+            ),
+        )
+    )
+    return _note_view(note)
+
+
+@router.patch("/v1/notes/{note_id}/refinement-proposal", response_model=NoteView)
+async def update_refinement_proposal(
+    note_id: UUID, body: ProposalUpdate, user: AuthenticatedUser, db: Db
+) -> NoteView:
+    note = await _execute(
+        note_service.update_refinement_proposal(
+            db,
+            user.id,
+            note_id,
+            ProposalUpdateCommand(
+                expected_processing_generation=body.expected_processing_generation,
+                refinement_proposal=body.refinement_proposal,
             ),
         )
     )
