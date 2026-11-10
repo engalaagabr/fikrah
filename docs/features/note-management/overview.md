@@ -17,7 +17,7 @@ The user approved the initial project-scoped note routes and processing states. 
 - User-requested retry preserves the note and adds a processing intent for the current revision.
 - Editing note content immediately clears a proposal made for the previous content. Editing only the title keeps the proposal while starting a new processing generation.
 - Deleting a note or project deletes relational note connections and queued processing rows and writes a durable Qdrant cleanup request in the same database transaction. The actual vector deletion is asynchronous.
-- HTTP request models stay in `app/notes/schemas.py`; routes map them to framework-independent commands in `app/notes/contracts.py` before calling `NoteService`. The application service no longer depends on Pydantic request schemas.
+- HTTP request models stay in `app/notes/schemas.py`; routes map them to framework-independent commands in `app/notes/contracts.py` before calling `NoteService`. The service returns immutable results from `app/notes/results.py`, which routes map to public response schemas. The application service does not depend on Pydantic request or response schemas.
 
 ## API Contract
 
