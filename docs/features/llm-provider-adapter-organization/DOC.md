@@ -6,16 +6,16 @@ Keep each LLM provider's integration boundary explicit while sharing only behavi
 
 ## Module Responsibilities
 
-- `app/infrastructure/ai/factory.py` reads environment configuration and composes the configured text and embedding adapters.
-- `app/infrastructure/ai/providers/deepseek.py` owns the DeepSeek text adapter and its native API endpoint.
-- `app/infrastructure/ai/providers/openrouter.py` owns the OpenRouter text adapter and endpoint.
-- `app/infrastructure/ai/providers/gemini.py` owns Gemini text generation and embeddings.
-- `app/infrastructure/ai/providers/openai_compatible.py` contains shared Chat Completions transport and response parsing used by DeepSeek and OpenRouter.
-- `app/ai/contracts.py`, `app/ai/ports.py`, and `app/ai/prompts.py` remain the shared application contracts, interfaces, and prompts. Provider modules do not define product prompts.
+- `app/infrastructure/llm/factory.py` reads environment configuration and composes the configured text and embedding adapters.
+- `app/infrastructure/llm/providers/deepseek.py` owns `DeepSeekTextGenerator` and its native API endpoint.
+- `app/infrastructure/llm/providers/openrouter.py` owns `OpenRouterTextGenerator` and its endpoint.
+- `app/infrastructure/llm/providers/gemini.py` owns `GeminiTextGenerator` and Gemini embeddings.
+- `app/infrastructure/llm/providers/openai_compatible.py` contains shared Chat Completions transport and response parsing used by DeepSeek and OpenRouter.
+- `app/llm/contracts.py` and `app/llm/ports.py` define shared result contracts and the `StructuredTextGenerator` port. `app/llm/prompts.py` and `app/llm/use_cases.py` own product prompt composition, note/chat workflows, and output contracts. Provider adapters handle provider transport and structured response validation only.
 
 ## Runtime Behavior
 
-This is an organization-only refactor. Provider selection, environment variable names, model defaults, request behavior, and persisted data remain unchanged. `AI_TEXT_PROVIDER=deepseek` selects the native DeepSeek adapter; `AI_TEXT_PROVIDER=openrouter` selects OpenRouter, which can use the DeepSeek model identifier configured for OpenRouter. Gemini remains responsible for embeddings.
+Provider selection and model defaults remain unchanged. The application-facing package is `app.llm`, the infrastructure package is `app.infrastructure.llm`, and `LLMProviderFactory` is the composition root. `LLM_TEXT_PROVIDER=deepseek` selects the native DeepSeek adapter; `LLM_TEXT_PROVIDER=openrouter` selects OpenRouter, which can use the DeepSeek model identifier configured for OpenRouter. Gemini remains responsible for embeddings. Deployment configuration uses `LLM_TEXT_PROVIDER`.
 
 ## Configuration
 

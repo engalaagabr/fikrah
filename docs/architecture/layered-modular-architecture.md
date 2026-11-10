@@ -24,18 +24,18 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 | Search | `app/search/routes.py` | `SemanticSearchService`, result contracts in `app/search/contracts.py` | Gemini embeddings and Qdrant adapter |
 | Connections | `app/connections/routes.py` | `KnowledgeConnectionService`, result contracts in `app/connections/contracts.py` | PostgreSQL connection records |
 | Chat | `app/chat/routes.py` | `ChatService`, commands and results in `app/chat/contracts.py` | Search use case, configured text-model adapter, PostgreSQL history |
-| LLM | — | contracts, provider ports, prompt definitions | `app/infrastructure/ai/` adapters and provider factory |
+| LLM | — | result contracts, `StructuredTextGenerator` port, note/chat use cases, prompt definitions | `app/infrastructure/llm/` provider adapters and factory |
 | Worker | — | asynchronous processing entry points | Celery/Redis, PostgreSQL, LLM and Qdrant adapters |
 
 ## LLM boundaries
 
-`app/ai/contracts.py`, `ports.py`, and `prompts.py` define the application-facing LLM data and behavior. Prompts are authored outside provider adapters. `app/infrastructure/ai/providers/` contains separate Gemini, DeepSeek, and OpenRouter adapters; only their shared OpenAI-compatible transport is implemented once. `AIProviderFactory` in `app/infrastructure/ai/factory.py` is infrastructure composition and reads deployment configuration; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
+`app/llm/contracts.py` and `ports.py` define shared results and the `StructuredTextGenerator` boundary. `app/llm/prompts.py` and `use_cases.py` own product prompts and note/chat workflows. Provider adapters under `app/infrastructure/llm/providers/` accept structured generation requests and contain only provider transport and response validation; the shared OpenAI-compatible transport is implemented once. `LLMProviderFactory` in `app/infrastructure/llm/factory.py` composes configured adapters; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
 
 ## Request and processing flow
 
 1. A route validates the request with a feature schema and passes the authenticated user ID to its application service.
 2. The application service applies ownership and product rules, persists the change, and schedules durable work where required.
-3. Celery workers load the persisted processing job, call application-facing LLM contracts through infrastructure adapters, then save results and vectors.
+3. Celery workers load the persisted processing job, call LLM application use cases through injected ports, then save results and vectors.
 4. Search retrieves candidate vector IDs from Qdrant and validates ownership, project, completion state, and revision in PostgreSQL before returning notes.
 
 ## Rules for future changes
