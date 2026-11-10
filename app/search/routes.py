@@ -10,6 +10,7 @@ from app.auth.dependencies import current_user
 from app.database import get_db_session
 from app.infrastructure.container import search_service
 from app.models import User
+from app.search.contracts import SearchMatch
 from app.search.errors import SearchUnavailableError
 from app.search.schemas import SearchRequest, SearchResult
 from app.search.service import SearchProjectNotFound
@@ -36,13 +37,14 @@ async def search_project_notes(
         raise HTTPException(
             status_code=503, detail="Semantic search is temporarily unavailable"
         ) from error
-    return [
-        SearchResult(
-            note_id=match.note.id,
-            title=match.note.title,
-            content=match.note.content,
-            score=match.score,
-            updated_at=match.note.updated_at,
-        )
-        for match in matches
-    ]
+    return [_search_result_view(match) for match in matches]
+
+
+def _search_result_view(match: SearchMatch) -> SearchResult:
+    return SearchResult(
+        note_id=match.note_id,
+        title=match.title,
+        content=match.content,
+        score=match.score,
+        updated_at=match.updated_at,
+    )
