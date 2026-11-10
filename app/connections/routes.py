@@ -7,7 +7,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.connections.schemas import ProjectGraph, RelatedNoteView
+from app.connections.contracts import (
+    KnowledgeGraphEdge,
+    KnowledgeGraphNode,
+    ProjectKnowledgeGraph,
+    RelatedNote,
+)
+from app.connections.schemas import (
+    GraphEdge,
+    GraphNode,
+    ProjectGraph,
+    RelatedNoteView,
+)
 from app.connections.service import (
     KnowledgeConnectionService,
     KnowledgeResourceNotFound,
@@ -26,9 +37,12 @@ async def list_note_connections(
     note_id: UUID, user: AuthenticatedUser, db: Db
 ) -> list[RelatedNoteView]:
     try:
-        return await knowledge_service.list_note_connections(db, user.id, note_id)
+        related_notes = await knowledge_service.list_note_connections(
+            db, user.id, note_id
+        )
     except KnowledgeResourceNotFound as error:
         raise HTTPException(status_code=404, detail=f"{error} not found") from error
+    return [_related_note_view(note) for note in related_notes]
 
 
 @router.get("/v1/projects/{project_id}/knowledge-graph", response_model=ProjectGraph)
@@ -36,6 +50,40 @@ async def get_project_knowledge_graph(
     project_id: UUID, user: AuthenticatedUser, db: Db
 ) -> ProjectGraph:
     try:
-        return await knowledge_service.get_project_graph(db, user.id, project_id)
+        graph = await knowledge_service.get_project_graph(db, user.id, project_id)
     except KnowledgeResourceNotFound as error:
         raise HTTPException(status_code=404, detail=f"{error} not found") from error
+    return _project_graph_view(graph)
+
+
+def _related_note_view(note: RelatedNote) -> RelatedNoteView:
+    return RelatedNoteView(
+        note_id=note.note_id,
+        title=note.title,
+        shared_concepts=list(note.shared_concepts),
+        updated_at=note.updated_at,
+    )
+
+
+def _project_graph_view(graph: ProjectKnowledgeGraph) -> ProjectGraph:
+    return ProjectGraph(
+        nodes=[_graph_node_view(node) for node in graph.nodes],
+        edges=[_graph_edge_view(edge) for edge in graph.edges],
+    )
+
+
+def _graph_node_view(node: KnowledgeGraphNode) -> GraphNode:
+    return GraphNode(
+        id=node.id,
+        title=node.title,
+        concepts=list(node.concepts),
+        updated_at=node.updated_at,
+    )
+
+
+def _graph_edge_view(edge: KnowledgeGraphEdge) -> GraphEdge:
+    return GraphEdge(
+        source_note_id=edge.source_note_id,
+        target_note_id=edge.target_note_id,
+        shared_concepts=list(edge.shared_concepts),
+    )
