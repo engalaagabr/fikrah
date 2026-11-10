@@ -22,3 +22,9 @@ New email/password accounts receive a verification email and a welcome email
 after creation. New Google accounts receive a welcome email after their account
 and session are committed. Existing accounts do not receive another welcome
 email when they sign in.
+
+When using Docker Compose, the API sends these messages to the local Mailpit
+service instead of an external SMTP server. Open `http://localhost:8025` to
+inspect captured messages. The Compose configuration overrides SMTP host and
+security settings inside the API container; a backend run directly on the host
+uses the `localhost` SMTP settings in `.env`.
