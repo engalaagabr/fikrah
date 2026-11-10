@@ -2,7 +2,9 @@
 
 ## Approved Providers
 
-DeepSeek, Gemini, and OpenRouter text-generation adapters share the `AIProviderFactory` composition component in `app/infrastructure/ai/factory.py`. The local environment selects OpenRouter with `deepseek/deepseek-v4.1-flash`; deployments may select `deepseek`, `gemini`, or `openrouter` through `AI_TEXT_PROVIDER`. Provider and model are selected by deployment configuration, not by mobile requests.
+DeepSeek, Gemini, and OpenRouter have separate adapter modules under `app/infrastructure/ai/providers/`. `AIProviderFactory` in `app/infrastructure/ai/factory.py` is the composition root: it reads deployment configuration and creates the selected adapter. The local environment selects OpenRouter with `deepseek/deepseek-v4.1-flash`; deployments may select `deepseek`, `gemini`, or `openrouter` through `AI_TEXT_PROVIDER`. Provider and model are selected by deployment configuration, not by mobile requests.
+
+The provider package keeps provider-specific endpoints in `deepseek.py`, `openrouter.py`, and `gemini.py`. DeepSeek uses its native API endpoint; OpenRouter uses its own endpoint and model namespace. Their common Chat Completions request/response handling lives in `openai_compatible.py`. Shared prompts and application contracts remain in `app/ai/`, outside the infrastructure adapters.
 
 Gemini is the embedding provider for every deployment. DeepSeek's current API documentation exposes text/chat model APIs but no embeddings API; Gemini provides text embeddings. Using one embedding model keeps all note vectors in a compatible embedding space when the text-generation provider changes. The default Gemini embedding model is `gemini-embedding-001` with 768 dimensions, which is one of Google's recommended output sizes.
 
@@ -16,7 +18,7 @@ The selected text model returns a validated structure:
 - `refinement_proposal`: a clearer rewrite in the original language, preserving the author's meaning. It remains a proposal and never replaces saved content automatically.
 - `concepts`: up to eight concise concepts.
 
-DeepSeek and OpenRouter use OpenAI-compatible Chat Completions endpoints with JSON output; OpenRouter uses `https://openrouter.ai/api/v1`. Gemini uses the official Google GenAI Python SDK and Pydantic-backed structured output. Provider credentials are loaded only by the worker process. The mobile API never accepts provider keys or provider selection.
+DeepSeek and OpenRouter use OpenAI-compatible Chat Completions endpoints with JSON output; DeepSeek uses `https://api.deepseek.com`, while OpenRouter uses `https://openrouter.ai/api/v1`. Gemini uses the official Google GenAI Python SDK and Pydantic-backed structured output. Provider credentials are loaded only by the worker process. The mobile API never accepts provider keys or provider selection.
 
 ## Celery and Durable Dispatch
 
