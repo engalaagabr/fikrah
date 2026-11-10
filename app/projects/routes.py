@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import current_user
 from app.database import get_db_session
 from app.models import User
+from app.projects.contracts import ProjectResult
 from app.projects.schemas import ProjectInput, ProjectView
 from app.projects.service import (
     GeneralProjectProtected,
@@ -35,10 +36,19 @@ def _translate_service_error(error: Exception) -> HTTPException:
     raise error
 
 
+def _project_view(project: ProjectResult) -> ProjectView:
+    return ProjectView(
+        id=project.id,
+        name=project.name,
+        is_general=project.is_general,
+        created_at=project.created_at,
+    )
+
+
 @router.get("", response_model=list[ProjectView])
 async def list_projects(user: AuthenticatedUser, db: Db) -> list[ProjectView]:
     projects = await project_service.list_projects(db, user.id)
-    return [ProjectView.model_validate(project) for project in projects]
+    return [_project_view(project) for project in projects]
 
 
 @router.post("", response_model=ProjectView, status_code=status.HTTP_201_CREATED)
@@ -46,7 +56,7 @@ async def create_project(
     body: ProjectInput, user: AuthenticatedUser, db: Db
 ) -> ProjectView:
     project = await project_service.create_project(db, user.id, body.name)
-    return ProjectView.model_validate(project)
+    return _project_view(project)
 
 
 @router.get("/{project_id}", response_model=ProjectView)
@@ -55,7 +65,7 @@ async def get_project(project_id: UUID, user: AuthenticatedUser, db: Db) -> Proj
         project = await project_service.get_project(db, user.id, project_id)
     except ProjectNotFound as error:
         raise _translate_service_error(error) from error
-    return ProjectView.model_validate(project)
+    return _project_view(project)
 
 
 @router.patch("/{project_id}", response_model=ProjectView)
@@ -68,7 +78,7 @@ async def rename_project(
         )
     except ProjectNotFound as error:
         raise _translate_service_error(error) from error
-    return ProjectView.model_validate(project)
+    return _project_view(project)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
