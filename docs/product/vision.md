@@ -55,4 +55,4 @@ Users can ask questions and receive contextual answers grounded in their notes a
 
 ## Open Product Questions
 
-The implementation scope and remaining product decisions are tracked in [ai-backend-scope.md](ai-backend-scope.md). The backend API and module boundaries are documented in [the layered modular architecture](../architecture/layered-modular-architecture.md).
+The implementation scope and remaining product decisions are tracked in [llm-backend-scope.md](llm-backend-scope.md). The backend API and module boundaries are documented in [the layered modular architecture](../architecture/layered-modular-architecture.md).

@@ -2,9 +2,9 @@
 
 ## Approved Providers
 
-DeepSeek, Gemini, and OpenRouter have separate adapter modules under `app/infrastructure/ai/providers/`. `AIProviderFactory` in `app/infrastructure/ai/factory.py` is the composition root: it reads deployment configuration and creates the selected adapter. The local environment selects OpenRouter with `deepseek/deepseek-v4.1-flash`; deployments may select `deepseek`, `gemini`, or `openrouter` through `AI_TEXT_PROVIDER`. Provider and model are selected by deployment configuration, not by mobile requests.
+DeepSeek, Gemini, and OpenRouter have separate adapter modules under `app/infrastructure/llm/providers/`. `LLMProviderFactory` in `app/infrastructure/llm/factory.py` is the composition root: it reads deployment configuration and creates the selected adapter. The local environment selects OpenRouter with `deepseek/deepseek-v4.1-flash`; deployments may select `deepseek`, `gemini`, or `openrouter` through `LLM_TEXT_PROVIDER`. Provider and model are selected by deployment configuration, not by mobile requests.
 
-The provider package keeps provider-specific endpoints in `deepseek.py`, `openrouter.py`, and `gemini.py`. DeepSeek uses its native API endpoint; OpenRouter uses its own endpoint and model namespace. Their common Chat Completions request/response handling lives in `openai_compatible.py`. Shared prompts and application contracts remain in `app/ai/`, outside the infrastructure adapters.
+The provider package keeps provider-specific endpoints in `deepseek.py`, `openrouter.py`, and `gemini.py`. DeepSeek uses its native API endpoint; OpenRouter uses its own endpoint and model namespace. Their common Chat Completions transport lives in `openai_compatible.py`. Application use cases in `app/llm/use_cases.py` compose product prompts and choose the response contract; adapters accept those inputs through the `StructuredTextGenerator` port and handle provider-specific structured output.
 
 Gemini is the embedding provider for every deployment. DeepSeek's current API documentation exposes text/chat model APIs but no embeddings API; Gemini provides text embeddings. Using one embedding model keeps all note vectors in a compatible embedding space when the text-generation provider changes. The default Gemini embedding model is `gemini-embedding-001` with 768 dimensions, which is one of Google's recommended output sizes.
 
@@ -39,7 +39,7 @@ Required environment variables:
 - `GEMINI_API_KEY`: required for embeddings; also used for text generation when Gemini is selected.
 - `DEEPSEEK_API_KEY`: required when DeepSeek is selected for text generation.
 - `OPENROUTER_API_KEY`: required when OpenRouter is selected for text generation.
-- `AI_TEXT_PROVIDER`: `deepseek`, `gemini`, or `openrouter`.
+- `LLM_TEXT_PROVIDER`: `deepseek`, `gemini`, or `openrouter`.
 
 Optional model/dimension variables are listed above; `QDRANT_API_KEY` and `QDRANT_NOTES_COLLECTION` configure secured Qdrant deployments.
 
