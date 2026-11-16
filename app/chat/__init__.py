@@ -1,1 +1,0 @@
-"""Project-scoped chat API."""

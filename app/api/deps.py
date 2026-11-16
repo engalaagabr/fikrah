@@ -41,3 +41,6 @@ async def current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+AuthenticatedUser = Annotated[User, Depends(current_user)]

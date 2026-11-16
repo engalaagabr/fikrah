@@ -6,8 +6,6 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.errors import AuthServiceError
-from app.auth.ports import EmailDeliveryError, GoogleIdentityTokenError
 from app.core.security import (
     DUMMY_PASSWORD_HASH,
     REFRESH_TOKEN_TTL,
@@ -19,6 +17,8 @@ from app.core.security import (
 )
 from app.models import EmailActionToken, Project, RefreshSession, User
 from app.repositories.auth import AuthRepository
+from app.services.auth_errors import AuthServiceError
+from app.services.auth_ports import EmailDeliveryError, GoogleIdentityTokenError
 from app.services.contracts.auth import (
     ActionToken,
     AuthMessage,

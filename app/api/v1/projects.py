@@ -1,15 +1,11 @@
 """HTTP presentation layer for project endpoints."""
 
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, Response, status
 
-from app.auth.dependencies import current_user
-from app.db.session import get_db_session
+from app.api.deps import AuthenticatedUser, Db
 from app.infrastructure.container import project_service
-from app.models import User
 from app.schemas.projects import ProjectInput, ProjectView
 from app.services.contracts.projects import ProjectResult
 from app.services.projects_service import (
@@ -18,8 +14,6 @@ from app.services.projects_service import (
 )
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
-Db = Annotated[AsyncSession, Depends(get_db_session)]
-AuthenticatedUser = Annotated[User, Depends(current_user)]
 
 
 def _translate_service_error(error: Exception) -> HTTPException:

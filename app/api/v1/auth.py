@@ -1,14 +1,12 @@
 """HTTP presentation layer for authentication endpoints."""
 
 from collections.abc import Awaitable
-from typing import Annotated, TypeVar
+from typing import TypeVar
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
-from app.auth.dependencies import Db, current_user
-from app.auth.errors import AuthServiceError
+from app.api.deps import AuthenticatedUser, Db
 from app.infrastructure.container import auth_service
-from app.models import User
 from app.schemas.auth import (
     AuthTokens,
     Credentials,
@@ -20,6 +18,7 @@ from app.schemas.auth import (
     TokenRequest,
     UserView,
 )
+from app.services.auth_errors import AuthServiceError
 from app.services.contracts.auth import (
     ActionToken,
     AuthMessage,
@@ -32,7 +31,6 @@ from app.services.contracts.auth import (
 )
 
 router = APIRouter(prefix="/v1/auth", tags=["authentication"])
-AuthenticatedUser = Annotated[User, Depends(current_user)]
 Result = TypeVar("Result")
 
 

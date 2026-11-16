@@ -1,16 +1,13 @@
 """HTTP presentation layer for project-scoped knowledge chat."""
 
 from collections.abc import Awaitable
-from typing import Annotated, TypeVar
+from typing import TypeVar
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, Response, status
 
-from app.auth.dependencies import current_user
-from app.db.session import get_db_session
+from app.api.deps import AuthenticatedUser, Db
 from app.infrastructure.container import chat_service
-from app.models import User
 from app.schemas.chat import (
     ConversationCreate,
     ConversationDetail,
@@ -30,8 +27,6 @@ from app.services.contracts.chat import (
 )
 
 router = APIRouter(tags=["chat"])
-Db = Annotated[AsyncSession, Depends(get_db_session)]
-AuthenticatedUser = Annotated[User, Depends(current_user)]
 T = TypeVar("T")
 
 

@@ -128,7 +128,7 @@ class FakeEmbeddingModel:
 async def test_search_returns_only_authorized_current_completed_notes(
     search_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.search import routes as search_routes
+    from app.api.v1 import search as search_routes
 
     (
         client,
@@ -185,7 +185,7 @@ async def test_search_returns_only_authorized_current_completed_notes(
 async def test_search_is_scoped_to_the_authenticated_user_and_selected_project(
     search_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.search import routes as search_routes
+    from app.api.v1 import search as search_routes
 
     client, _, _, other_project_id, _, _, _, _, _, token = search_api
 

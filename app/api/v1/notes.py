@@ -4,13 +4,10 @@ from collections.abc import Awaitable
 from typing import Annotated, TypeVar
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Header, HTTPException, Response, status
 
-from app.auth.dependencies import current_user
-from app.db.session import get_db_session
+from app.api.deps import AuthenticatedUser, Db
 from app.infrastructure.container import note_service
-from app.models import User
 from app.schemas.notes import (
     NoteCreate,
     NoteUpdate,
@@ -28,8 +25,6 @@ from app.services.contracts.notes import (
 from app.services.notes_service import NoteServiceError
 
 router = APIRouter(tags=["notes"])
-Db = Annotated[AsyncSession, Depends(get_db_session)]
-AuthenticatedUser = Annotated[User, Depends(current_user)]
 T = TypeVar("T")
 
 

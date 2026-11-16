@@ -1,23 +1,17 @@
 """HTTP presentation layer for semantic search."""
 
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException
 
-from app.auth.dependencies import current_user
-from app.db.session import get_db_session
+from app.api.deps import AuthenticatedUser, Db
 from app.infrastructure.container import search_service
-from app.models import User
 from app.rag.errors import SearchUnavailableError
 from app.schemas.search import SearchRequest, SearchResult
-from app.search.errors import SearchProjectNotFound
 from app.services.contracts.search import SearchMatch
+from app.services.search_errors import SearchProjectNotFound
 
 router = APIRouter(tags=["search"])
-Db = Annotated[AsyncSession, Depends(get_db_session)]
-AuthenticatedUser = Annotated[User, Depends(current_user)]
 
 
 @router.post("/v1/projects/{project_id}/search", response_model=list[SearchResult])

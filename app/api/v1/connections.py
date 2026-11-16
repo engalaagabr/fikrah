@@ -1,15 +1,11 @@
 """HTTP presentation layer for note-connection and graph retrieval."""
 
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException
 
-from app.auth.dependencies import current_user
-from app.db.session import get_db_session
+from app.api.deps import AuthenticatedUser, Db
 from app.infrastructure.container import knowledge_connection_service
-from app.models import User
 from app.schemas.connections import (
     GraphEdge,
     GraphNode,
@@ -27,8 +23,6 @@ from app.services.contracts.connections import (
 )
 
 router = APIRouter(tags=["knowledge graph"])
-Db = Annotated[AsyncSession, Depends(get_db_session)]
-AuthenticatedUser = Annotated[User, Depends(current_user)]
 
 
 @router.get("/v1/notes/{note_id}/connections", response_model=list[RelatedNoteView])

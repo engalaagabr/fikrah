@@ -148,8 +148,8 @@ async def test_chat_persists_messages_and_only_authorized_citations(
 
             return FakeStructuredTextGenerator()
 
-    from app.chat import routes as chat_routes
-    from app.search import routes as search_routes
+    from app.api.v1 import chat as chat_routes
+    from app.api.v1 import search as search_routes
 
     monkeypatch.setattr(
         chat_routes.chat_service,
@@ -235,8 +235,8 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
 
             return FakeStructuredTextGenerator()
 
-    from app.chat import routes as chat_routes
-    from app.search import routes as search_routes
+    from app.api.v1 import chat as chat_routes
+    from app.api.v1 import search as search_routes
 
     monkeypatch.setattr(
         chat_routes.chat_service,
@@ -315,8 +315,8 @@ async def test_chat_uses_latest_twelve_messages_in_chronological_order(
 
             return FakeStructuredTextGenerator()
 
-    from app.chat import routes as chat_routes
-    from app.search import routes as search_routes
+    from app.api.v1 import chat as chat_routes
+    from app.api.v1 import search as search_routes
 
     monkeypatch.setattr(
         chat_routes.chat_service,
@@ -379,8 +379,8 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
 
             return FakeStructuredTextGenerator()
 
-    from app.chat import routes as chat_routes
-    from app.search import routes as search_routes
+    from app.api.v1 import chat as chat_routes
+    from app.api.v1 import search as search_routes
     from app.services import chat_service as chat_service_module
 
     original_to_thread = chat_service_module.asyncio.to_thread

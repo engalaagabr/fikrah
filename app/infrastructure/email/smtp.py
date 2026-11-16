@@ -7,8 +7,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import aiosmtplib
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from app.auth.ports import EmailDeliveryError
 from app.core.config import get_settings
+from app.services.auth_ports import EmailDeliveryError
 
 EMAIL_TEMPLATE_DIRECTORY = Path(__file__).resolve().parents[3] / "static" / "emails"
 EMAIL_TEMPLATES = Environment(

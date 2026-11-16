@@ -13,7 +13,6 @@ from app.llm.use_cases import answer_project_question
 from app.models import ChatConversation, ChatMessage, Project
 from app.rag.errors import SearchUnavailableError
 from app.repositories.chat import ChatRepository
-from app.search.errors import SearchProjectNotFound
 from app.services.contracts.chat import (
     ConversationCreateCommand,
     ConversationHistory,
@@ -23,6 +22,7 @@ from app.services.contracts.chat import (
     MessageSubmissionResult,
     SourceReference,
 )
+from app.services.search_errors import SearchProjectNotFound
 from app.services.search_service import SemanticSearchService
 
 CHAT_CONTEXT_LIMIT = 8

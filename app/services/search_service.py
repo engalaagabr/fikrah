@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.llm.ports import EmbeddingModel
 from app.rag.retriever import retrieve_current_notes
 from app.repositories.search import SearchRepository
-from app.search.errors import SearchProjectNotFound
 from app.services.contracts.search import SearchMatch
+from app.services.search_errors import SearchProjectNotFound
 
 
 class SemanticSearchService:
