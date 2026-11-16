@@ -49,7 +49,7 @@ Dependencies point inward at contracts. HTTP handlers translate HTTP input/outpu
 - Pass the authenticated user ID from the API boundary; never accept an owner ID from a client request.
 - Keep PostgreSQL authoritative for user-owned records. Treat Qdrant results as candidates that must be verified against PostgreSQL.
 - Add cross-module dependencies through application-facing contracts/use cases, not by importing another module's route handlers.
-- Preserve feature docs at `docs/features/<feature>/DOC.md` (or the feature's existing overview file) and phase docs at `docs/phases/<phase>/DOC.md` (or existing phase overview) when making future changes.
+- Name feature and phase documentation files after their document title, using lowercase kebab-case: `docs/features/<feature>/<document-title>.md` and `docs/phases/<phase>/<document-title>.md`. Keep each document inside its feature or phase directory and update links when a filename changes.
 
 ## Known migration boundary
 
