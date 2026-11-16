@@ -7,12 +7,12 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.chat.repository import ChatRepository
 from app.llm.contracts import ChatHistoryMessage, ChatNoteContext
 from app.llm.ports import StructuredTextGenerator
 from app.llm.use_cases import answer_project_question
 from app.models import ChatConversation, ChatMessage, Project
 from app.rag.errors import SearchUnavailableError
+from app.repositories.chat import ChatRepository
 from app.search.errors import SearchProjectNotFound
 from app.search.service import SemanticSearchService
 from app.services.contracts.chat import (

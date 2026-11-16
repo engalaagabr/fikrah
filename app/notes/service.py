@@ -13,7 +13,7 @@ from app.models import (
     NoteIdempotencyKey,
     Project,
 )
-from app.notes.repository import NoteRepository
+from app.repositories.notes import NoteRepository
 from app.services.contracts.note_results import NoteResult
 from app.services.contracts.notes import (
     NoteCreateCommand,

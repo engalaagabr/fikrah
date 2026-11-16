@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.ports import EmbeddingModel
 from app.rag.errors import SearchUnavailableError
+from app.repositories.search import SearchRepository
 from app.search.errors import SearchProjectNotFound
-from app.search.repository import SearchRepository
 from app.services.contracts.search import SearchMatch
 
 

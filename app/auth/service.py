@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.errors import AuthServiceError
 from app.auth.ports import EmailDeliveryError, GoogleIdentityTokenError
-from app.auth.repository import AuthRepository
 from app.core.security import (
     DUMMY_PASSWORD_HASH,
     REFRESH_TOKEN_TTL,
@@ -19,6 +18,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models import EmailActionToken, Project, RefreshSession, User
+from app.repositories.auth import AuthRepository
 from app.services.contracts.auth import (
     ActionToken,
     AuthMessage,

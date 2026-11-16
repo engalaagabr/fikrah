@@ -4,7 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.connections.repository import KnowledgeConnectionRepository
+from app.repositories.connections import KnowledgeConnectionRepository
 from app.services.contracts.connections import (
     KnowledgeGraphEdge,
     KnowledgeGraphNode,

@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Project
-from app.projects.repository import ProjectRepository
+from app.repositories.projects import ProjectRepository
 from app.services.contracts.projects import ProjectResult
 
 
