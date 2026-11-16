@@ -18,6 +18,8 @@ The selected text model returns a validated structure:
 - `refinement_proposal`: a clearer rewrite in the original language, preserving the author's meaning. It remains a proposal and never replaces saved content automatically.
 - `concepts`: up to eight concise concepts.
 
+Note content is untrusted input. Product instructions are supplied separately from the serialized note content, and instructions found inside a note are treated as content to analyze rather than instructions to follow.
+
 DeepSeek and OpenRouter use OpenAI-compatible Chat Completions endpoints with JSON output; DeepSeek uses `https://api.deepseek.com`, while OpenRouter uses `https://openrouter.ai/api/v1`. Gemini uses the official Google GenAI Python SDK and Pydantic-backed structured output. Provider credentials are loaded only by the worker process. The mobile API never accepts provider keys or provider selection.
 
 ## Celery and Durable Dispatch
