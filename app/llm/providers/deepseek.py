@@ -1,6 +1,6 @@
 """DeepSeek text-generation adapter."""
 
-from app.infrastructure.llm.providers.openai_compatible import (
+from app.llm.providers.openai_compatible import (
     OpenAICompatibleStructuredTextGenerator,
 )
 

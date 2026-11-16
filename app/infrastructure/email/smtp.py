@@ -1,6 +1,5 @@
 """Configurable SMTP delivery for account emails."""
 
-import os
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -9,6 +8,7 @@ import aiosmtplib
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.auth.ports import EmailDeliveryError
+from app.core.config import get_settings
 
 EMAIL_TEMPLATE_DIRECTORY = Path(__file__).resolve().parents[3] / "static" / "emails"
 EMAIL_TEMPLATES = Environment(
@@ -30,15 +30,16 @@ ACTION_EMAILS = {
 
 
 def _smtp_settings() -> dict[str, object]:
-    host = os.getenv("SMTP_HOST")
-    sender = os.getenv("SMTP_FROM")
+    settings = get_settings()
+    host = settings.smtp_host
+    sender = settings.smtp_from
     if not host or not sender:
         raise RuntimeError("SMTP_HOST and SMTP_FROM must be configured")
 
-    port = int(os.getenv("SMTP_PORT", "587"))
-    username = os.getenv("SMTP_USERNAME")
-    password = os.getenv("SMTP_PASSWORD")
-    use_tls = os.getenv("SMTP_USE_TLS", "false").lower() == "true"
+    port = int(settings.smtp_port)
+    username = settings.smtp_username
+    password = settings.smtp_password
+    use_tls = settings.smtp_use_tls.lower() == "true"
     return {
         "hostname": host,
         "port": port,
@@ -47,7 +48,7 @@ def _smtp_settings() -> dict[str, object]:
         "password": password,
         "use_tls": use_tls,
         "start_tls": not use_tls
-        and os.getenv("SMTP_START_TLS", "true").lower() == "true",
+        and settings.smtp_start_tls.lower() == "true",
     }
 
 
@@ -65,7 +66,7 @@ async def send_action_email(recipient: str, token: str, purpose: str) -> None:
         raise ValueError(f"Unsupported email action purpose: {purpose}") from exc
 
     try:
-        base_url = os.getenv("EMAIL_ACTION_BASE_URL")
+        base_url = get_settings().email_action_base_url
         if not base_url:
             raise RuntimeError("EMAIL_ACTION_BASE_URL must be configured")
 

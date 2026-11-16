@@ -1,26 +1,26 @@
 """Composition root for application services and infrastructure adapters."""
 
-import os
-
 from app.auth.service import AuthService
 from app.chat.service import ChatService
 from app.connections.service import KnowledgeConnectionService
+from app.core.config import get_settings
 from app.infrastructure.email.smtp import send_action_email, send_welcome_email
 from app.infrastructure.identity.google import verify_google_id_token
-from app.infrastructure.llm.factory import LLMProviderFactory
-from app.infrastructure.vector_store.qdrant import search_note_vectors
+from app.llm.factory import LLMProviderFactory
 from app.notes.service import NoteService
 from app.projects.service import ProjectService
+from app.rag.embeddings import create_embedding_model
+from app.rag.vector_store import search_note_vectors
 from app.search.service import SemanticSearchService
 
 auth_service = AuthService(
     send_action_email=send_action_email,
     send_welcome_email=send_welcome_email,
     verify_google_id_token=verify_google_id_token,
-    google_client_id=lambda: os.getenv("GOOGLE_CLIENT_ID"),
+    google_client_id=lambda: get_settings().google_client_id,
 )
 search_service = SemanticSearchService(
-    embedding_model_factory=LLMProviderFactory.create_embedding_model,
+    embedding_model_factory=create_embedding_model,
     vector_search=search_note_vectors,
 )
 chat_service = ChatService(

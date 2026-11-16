@@ -5,19 +5,11 @@ from typing import Annotated, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth.contracts import (
-    ActionToken,
-    AuthMessage,
-    AuthTokenPair,
-    EmailAddress,
-    EmailPassword,
-    GoogleIdentityToken,
-    PasswordReset,
-    RefreshToken,
-)
 from app.auth.dependencies import Db, current_user
 from app.auth.errors import AuthServiceError
-from app.auth.schemas import (
+from app.infrastructure.container import auth_service
+from app.models import User
+from app.schemas.auth import (
     AuthTokens,
     Credentials,
     EmailRequest,
@@ -28,8 +20,16 @@ from app.auth.schemas import (
     TokenRequest,
     UserView,
 )
-from app.infrastructure.container import auth_service
-from app.models import User
+from app.services.contracts.auth import (
+    ActionToken,
+    AuthMessage,
+    AuthTokenPair,
+    EmailAddress,
+    EmailPassword,
+    GoogleIdentityToken,
+    PasswordReset,
+    RefreshToken,
+)
 
 router = APIRouter(prefix="/v1/auth", tags=["authentication"])
 AuthenticatedUser = Annotated[User, Depends(current_user)]

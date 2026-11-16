@@ -7,8 +7,8 @@ from celery import Task
 
 from app.infrastructure.persistence.worker_notes import WorkerNoteProcessingRepository
 from app.infrastructure.persistence.worker_outbox import WorkerOutboxRepository
-from app.infrastructure.vector_store.qdrant import QdrantNoteVectorStore
 from app.infrastructure.worker_container import create_note_processing_service
+from app.rag.vector_store import QdrantNoteVectorStore
 from app.worker.celery_app import celery_app, settings
 
 _STALE_DISPATCH_AFTER = timedelta(seconds=settings.stale_dispatch_after_seconds)

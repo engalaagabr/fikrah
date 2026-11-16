@@ -1,6 +1,5 @@
 """PostgreSQL engine and async session lifecycle."""
 
-import os
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import (
@@ -10,7 +9,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-DATABASE_URL_ENV = "DATABASE_URL"
+from app.core.config import DATABASE_URL_ENV, get_settings
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -22,7 +21,7 @@ def initialize_database(
     """Create the shared async engine and session factory once per process."""
     global _engine, _session_factory
 
-    resolved_url = database_url or os.getenv(DATABASE_URL_ENV)
+    resolved_url = database_url or get_settings().database_url
     if not resolved_url:
         raise RuntimeError(f"{DATABASE_URL_ENV} must be configured to use PostgreSQL")
 

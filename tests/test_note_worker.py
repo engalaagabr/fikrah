@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import UUID
@@ -29,7 +30,7 @@ class FakeStructuredTextGenerator:
         user_content: str,
         response_model: type[NoteAnalysis],
     ) -> NoteAnalysis:
-        assert user_content == "Original thought"
+        assert json.loads(user_content) == {"note_content": "Original thought"}
         assert response_model is NoteAnalysis
         return NoteAnalysis(
             title="Generated title",
@@ -120,7 +121,7 @@ def test_celery_job_analyzes_current_revision_and_upserts_embedding(
         lambda: FakeStructuredTextGenerator(),
     )
     monkeypatch.setattr(
-        worker_container.LLMProviderFactory,
+        worker_container,
         "create_embedding_model",
         lambda: FakeEmbeddingModel(),
     )
@@ -245,7 +246,7 @@ def test_note_processing_links_shared_concepts_only_with_completed_project_notes
         lambda: FakeStructuredTextGenerator(),
     )
     monkeypatch.setattr(
-        worker_container.LLMProviderFactory,
+        worker_container,
         "create_embedding_model",
         lambda: FakeEmbeddingModel(),
     )

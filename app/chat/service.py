@@ -5,10 +5,17 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.chat.contracts import (
+from app.chat.repository import ChatRepository
+from app.llm.contracts import ChatHistoryMessage, ChatNoteContext
+from app.llm.ports import StructuredTextGenerator
+from app.llm.use_cases import answer_project_question
+from app.models import ChatConversation, ChatMessage, Project
+from app.rag.errors import SearchUnavailableError
+from app.search.errors import SearchProjectNotFound
+from app.search.service import SemanticSearchService
+from app.services.contracts.chat import (
     ConversationCreateCommand,
     ConversationHistory,
     ConversationSummary,
@@ -17,12 +24,6 @@ from app.chat.contracts import (
     MessageSubmissionResult,
     SourceReference,
 )
-from app.llm.contracts import ChatHistoryMessage, ChatNoteContext
-from app.llm.ports import StructuredTextGenerator
-from app.llm.use_cases import answer_project_question
-from app.models import ChatConversation, ChatMessage, ChatMessageSource, Note, Project
-from app.search.errors import SearchUnavailableError
-from app.search.service import SearchProjectNotFound, SemanticSearchService
 
 CHAT_CONTEXT_LIMIT = 8
 CHAT_HISTORY_LIMIT = 12
@@ -40,19 +41,18 @@ class ChatService:
         self,
         search_service: SemanticSearchService,
         text_generator_factory: Callable[[], StructuredTextGenerator],
+        repository: ChatRepository | None = None,
     ) -> None:
         self._search_service = search_service
         self._text_generator_factory = text_generator_factory
+        self._repository = repository or ChatRepository()
 
     async def _owned_project(
         self, db: AsyncSession, user_id: UUID, project_id: UUID, *, lock: bool = False
     ) -> Project:
-        query = select(Project).where(
-            Project.id == project_id, Project.user_id == user_id
+        project = await self._repository.find_owned_project(
+            db, user_id, project_id, lock=lock
         )
-        if lock:
-            query = query.with_for_update()
-        project = await db.scalar(query)
         if project is None:
             raise ChatServiceError(404, "Project not found")
         return project
@@ -65,13 +65,9 @@ class ChatService:
         *,
         lock: bool = False,
     ) -> ChatConversation:
-        query = select(ChatConversation).where(
-            ChatConversation.id == conversation_id,
-            ChatConversation.user_id == user_id,
+        conversation = await self._repository.find_owned_conversation(
+            db, user_id, conversation_id, lock=lock
         )
-        if lock:
-            query = query.with_for_update()
-        conversation = await db.scalar(query)
         if conversation is None:
             raise ChatServiceError(404, "Conversation not found")
         return conversation
@@ -81,13 +77,7 @@ class ChatService:
     ) -> list[MessageRecord]:
         if not messages:
             return []
-        rows = await db.execute(
-            select(ChatMessageSource.message_id, Note.id, Note.title)
-            .join(Note, Note.id == ChatMessageSource.note_id)
-            .where(
-                ChatMessageSource.message_id.in_([message.id for message in messages])
-            )
-        )
+        rows = await self._repository.list_message_sources(db, messages)
         sources_by_message: dict[UUID, list[SourceReference]] = {}
         for message_id, note_id, title in rows:
             sources_by_message.setdefault(message_id, []).append(
@@ -109,13 +99,8 @@ class ChatService:
         self, db: AsyncSession, user_id: UUID, project_id: UUID
     ) -> list[ConversationSummary]:
         await self._owned_project(db, user_id, project_id)
-        rows = await db.scalars(
-            select(ChatConversation)
-            .where(
-                ChatConversation.user_id == user_id,
-                ChatConversation.project_id == project_id,
-            )
-            .order_by(ChatConversation.updated_at.desc(), ChatConversation.id)
+        rows = await self._repository.list_conversations(
+            db, user_id, project_id
         )
         return [self._conversation_summary(item) for item in rows]
 
@@ -132,21 +117,17 @@ class ChatService:
             project_id=project_id,
             title=body.title,
         )
-        db.add(conversation)
+        await self._repository.add_conversation(db, conversation)
         await db.commit()
-        await db.refresh(conversation)
+        await self._repository.refresh_conversation(db, conversation)
         return self._conversation_summary(conversation)
 
     async def get_conversation(
         self, db: AsyncSession, user_id: UUID, conversation_id: UUID
     ) -> ConversationHistory:
         conversation = await self._owned_conversation(db, user_id, conversation_id)
-        messages = list(
-            await db.scalars(
-                select(ChatMessage)
-                .where(ChatMessage.conversation_id == conversation.id)
-                .order_by(ChatMessage.created_at, ChatMessage.id)
-            )
+        messages = await self._repository.list_messages(
+            db, conversation.id
         )
         return ConversationHistory(
             conversation=self._conversation_summary(conversation),
@@ -163,13 +144,8 @@ class ChatService:
         conversation = await self._owned_conversation(
             db, user_id, conversation_id, lock=True
         )
-        history_desc = list(
-            await db.scalars(
-                select(ChatMessage)
-                .where(ChatMessage.conversation_id == conversation.id)
-                .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
-                .limit(CHAT_HISTORY_LIMIT)
-            )
+        history_desc = await self._repository.list_recent_messages(
+            db, conversation.id, CHAT_HISTORY_LIMIT
         )
         history = [
             ChatHistoryMessage(role=message.role, content=message.content)
@@ -216,11 +192,8 @@ class ChatService:
         conversation = await self._owned_conversation(
             db, user_id, conversation_id, lock=True
         )
-        latest_message_id = await db.scalar(
-            select(ChatMessage.id)
-            .where(ChatMessage.conversation_id == conversation.id)
-            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
-            .limit(1)
+        latest_message_id = await self._repository.latest_message_id(
+            db, conversation.id
         )
         if latest_message_id != last_message_id:
             await db.rollback()
@@ -241,15 +214,8 @@ class ChatService:
                     valid_sources.append(parsed_id)
 
         if valid_sources:
-            source_notes = await db.scalars(
-                select(Note)
-                .where(
-                    Note.id.in_(valid_sources),
-                    Note.user_id == user_id,
-                    Note.project_id == project_id,
-                    Note.processing_status == "completed",
-                )
-                .with_for_update()
+            source_notes = await self._repository.find_completed_notes_for_citations(
+                db, user_id, project_id, valid_sources
             )
             current_source_ids = {
                 note.id
@@ -289,11 +255,8 @@ class ChatService:
             conversation = await self._owned_conversation(
                 db, user_id, conversation_id, lock=True
             )
-            latest_message_id = await db.scalar(
-                select(ChatMessage.id)
-                .where(ChatMessage.conversation_id == conversation.id)
-                .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
-                .limit(1)
+            latest_message_id = await self._repository.latest_message_id(
+                db, conversation.id
             )
             if latest_message_id != last_message_id:
                 await db.rollback()
@@ -320,17 +283,17 @@ class ChatService:
         )
         if conversation.title is None:
             conversation.title = body.content[:120]
-        db.add_all([user_message, assistant_message])
-        await db.flush()
-        db.add_all(
-            ChatMessageSource(message_id=assistant_message.id, note_id=note_id)
-            for note_id in valid_sources
-            if supported
+        await self._repository.add_messages_with_sources(
+            db,
+            user_message,
+            assistant_message,
+            valid_sources,
+            supported=supported,
         )
         await db.commit()
-        await db.refresh(conversation)
-        await db.refresh(user_message)
-        await db.refresh(assistant_message)
+        await self._repository.refresh_conversation(db, conversation)
+        await self._repository.refresh_message(db, user_message)
+        await self._repository.refresh_message(db, assistant_message)
 
         user_view, assistant_view = await self._message_views(
             db, [user_message, assistant_message]
@@ -359,16 +322,5 @@ class ChatService:
         conversation = await self._owned_conversation(
             db, user_id, conversation_id, lock=True
         )
-        message_ids = select(ChatMessage.id).where(
-            ChatMessage.conversation_id == conversation.id
-        )
-        await db.execute(
-            delete(ChatMessageSource).where(
-                ChatMessageSource.message_id.in_(message_ids)
-            )
-        )
-        await db.execute(
-            delete(ChatMessage).where(ChatMessage.conversation_id == conversation.id)
-        )
-        await db.delete(conversation)
+        await self._repository.delete_conversation_with_messages(db, conversation)
         await db.commit()

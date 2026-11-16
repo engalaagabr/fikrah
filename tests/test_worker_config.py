@@ -1,10 +1,10 @@
 import pytest
 
-from app.worker.config import WorkerSettings
+from app.core.config import get_worker_settings
 
 
 def test_worker_settings_use_documented_safe_defaults() -> None:
-    settings = WorkerSettings.from_env({})
+    settings = get_worker_settings({})
 
     assert settings.max_retries == 3
     assert settings.retry_backoff_seconds == 5
@@ -16,7 +16,7 @@ def test_worker_settings_use_documented_safe_defaults() -> None:
 
 
 def test_worker_settings_read_environment_overrides() -> None:
-    settings = WorkerSettings.from_env({
+    settings = get_worker_settings({
         "FIKRAH_CELERY_MAX_RETRIES": "5",
         "FIKRAH_CELERY_RETRY_BACKOFF_SECONDS": "8",
         "FIKRAH_CELERY_VISIBILITY_TIMEOUT_SECONDS": "7200",
@@ -40,4 +40,4 @@ def test_worker_settings_reject_invalid_positive_integer(
     value: str,
 ) -> None:
     with pytest.raises(ValueError, match="FIKRAH_DISPATCH_BATCH_SIZE must be a positive integer"):
-        WorkerSettings.from_env({"FIKRAH_DISPATCH_BATCH_SIZE": value})
+        get_worker_settings({"FIKRAH_DISPATCH_BATCH_SIZE": value})

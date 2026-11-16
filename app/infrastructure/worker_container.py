@@ -2,10 +2,11 @@
 
 from datetime import timedelta
 
-from app.infrastructure.llm.factory import LLMProviderFactory
 from app.infrastructure.persistence.worker_notes import WorkerNoteProcessingRepository
-from app.infrastructure.vector_store.qdrant import QdrantNoteVectorStore
-from app.notes.processing import NoteProcessingService
+from app.llm.factory import LLMProviderFactory
+from app.rag.embeddings import create_embedding_model
+from app.rag.pipeline import NoteProcessingService
+from app.rag.vector_store import QdrantNoteVectorStore
 
 
 def create_note_processing_service(
@@ -16,7 +17,7 @@ def create_note_processing_service(
         repository=repository,
         vector_store=QdrantNoteVectorStore(),
         text_generator_factory=LLMProviderFactory.create_text_generator,
-        embedding_model_factory=LLMProviderFactory.create_embedding_model,
+        embedding_model_factory=create_embedding_model,
         stale_processing_after=stale_processing_after,
     )
     return service, repository

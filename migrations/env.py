@@ -1,14 +1,13 @@
-from logging.config import fileConfig
 import asyncio
-import os
+from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.database import DATABASE_URL_ENV
-from app.models.base import Base
 import app.models  # noqa: F401
+from app.core.config import DATABASE_URL_ENV, get_settings
+from app.models.base import Base
 
 config = context.config
 
@@ -19,7 +18,7 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    database_url = os.getenv(DATABASE_URL_ENV)
+    database_url = get_settings().database_url
     if not database_url:
         raise RuntimeError(f"{DATABASE_URL_ENV} must be configured to run migrations")
     return database_url

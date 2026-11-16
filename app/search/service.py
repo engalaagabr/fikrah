@@ -4,17 +4,13 @@ import asyncio
 from collections.abc import Callable
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.ports import EmbeddingModel
-from app.models import Note, Project
-from app.search.contracts import SearchMatch
-from app.search.errors import SearchUnavailableError
-
-
-class SearchProjectNotFound(Exception):
-    pass
+from app.rag.errors import SearchUnavailableError
+from app.search.errors import SearchProjectNotFound
+from app.search.repository import SearchRepository
+from app.services.contracts.search import SearchMatch
 
 
 class SemanticSearchService:
@@ -24,9 +20,11 @@ class SemanticSearchService:
         vector_search: Callable[
             [list[float], UUID, UUID, int], list[tuple[UUID, int, float]]
         ],
+        repository: SearchRepository | None = None,
     ) -> None:
         self._embedding_model_factory = embedding_model_factory
         self._vector_search = vector_search
+        self._repository = repository or SearchRepository()
 
     async def retrieve(
         self,
@@ -36,9 +34,7 @@ class SemanticSearchService:
         query: str,
         limit: int,
     ) -> list[SearchMatch]:
-        project = await db.scalar(
-            select(Project).where(Project.id == project_id, Project.user_id == user_id)
-        )
+        project = await self._repository.find_owned_project(db, user_id, project_id)
         if project is None:
             raise SearchProjectNotFound
 
@@ -58,13 +54,8 @@ class SemanticSearchService:
         if not matches:
             return []
         revisions = {note_id: revision for note_id, revision, _ in matches}
-        notes = await db.scalars(
-            select(Note).where(
-                Note.id.in_(revisions),
-                Note.user_id == user_id,
-                Note.project_id == project_id,
-                Note.processing_status == "completed",
-            )
+        notes = await self._repository.find_completed_notes(
+            db, user_id, project_id, set(revisions)
         )
         current_notes = {
             note.id: note for note in notes if note.revision == revisions[note.id]

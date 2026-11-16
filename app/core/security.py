@@ -1,13 +1,14 @@
 """Password, email-token, and access-token helpers."""
 
 import hashlib
-import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import jwt
 from pwdlib import PasswordHash
+
+from app.core.config import get_settings
 
 password_hasher = PasswordHash.recommended()
 DUMMY_PASSWORD_HASH = password_hasher.hash("FIKRAH non-user password timing value")
@@ -33,7 +34,7 @@ def new_opaque_token() -> str:
 
 
 def create_access_token(user_id: UUID) -> str:
-    secret = os.getenv("FIKRAH_JWT_SECRET", "")
+    secret = get_settings().fikrah_jwt_secret
     if len(secret) < 32:
         raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
     now = datetime.now(timezone.utc)
@@ -51,7 +52,7 @@ def create_access_token(user_id: UUID) -> str:
 
 
 def decode_access_token(token: str) -> UUID:
-    secret = os.getenv("FIKRAH_JWT_SECRET", "")
+    secret = get_settings().fikrah_jwt_secret
     if len(secret) < 32:
         raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
     payload = jwt.decode(token, secret, algorithms=["HS256"], issuer=JWT_ISSUER)

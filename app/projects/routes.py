@@ -7,15 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.database import get_db_session
 from app.infrastructure.container import project_service
+from app.infrastructure.persistence.database import get_db_session
 from app.models import User
-from app.projects.contracts import ProjectResult
-from app.projects.schemas import ProjectInput, ProjectView
 from app.projects.service import (
     GeneralProjectProtected,
     ProjectNotFound,
 )
+from app.schemas.projects import ProjectInput, ProjectView
+from app.services.contracts.projects import ProjectResult
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]

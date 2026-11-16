@@ -7,24 +7,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.connections.contracts import (
-    KnowledgeGraphEdge,
-    KnowledgeGraphNode,
-    ProjectKnowledgeGraph,
-    RelatedNote,
+from app.connections.service import (
+    KnowledgeResourceNotFound,
 )
-from app.connections.schemas import (
+from app.infrastructure.container import knowledge_connection_service
+from app.infrastructure.persistence.database import get_db_session
+from app.models import User
+from app.schemas.connections import (
     GraphEdge,
     GraphNode,
     ProjectGraph,
     RelatedNoteView,
 )
-from app.connections.service import (
-    KnowledgeResourceNotFound,
+from app.services.contracts.connections import (
+    KnowledgeGraphEdge,
+    KnowledgeGraphNode,
+    ProjectKnowledgeGraph,
+    RelatedNote,
 )
-from app.database import get_db_session
-from app.infrastructure.container import knowledge_connection_service
-from app.models import User
 
 router = APIRouter(tags=["knowledge graph"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]

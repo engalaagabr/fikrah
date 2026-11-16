@@ -7,13 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.database import get_db_session
 from app.infrastructure.container import search_service
+from app.infrastructure.persistence.database import get_db_session
 from app.models import User
-from app.search.contracts import SearchMatch
-from app.search.errors import SearchUnavailableError
-from app.search.schemas import SearchRequest, SearchResult
-from app.search.service import SearchProjectNotFound
+from app.rag.errors import SearchUnavailableError
+from app.schemas.search import SearchRequest, SearchResult
+from app.search.errors import SearchProjectNotFound
+from app.services.contracts.search import SearchMatch
 
 router = APIRouter(tags=["search"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]

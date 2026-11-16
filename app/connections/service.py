@@ -2,16 +2,15 @@
 
 from uuid import UUID
 
-from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.connections.contracts import (
+from app.connections.repository import KnowledgeConnectionRepository
+from app.services.contracts.connections import (
     KnowledgeGraphEdge,
     KnowledgeGraphNode,
     ProjectKnowledgeGraph,
     RelatedNote,
 )
-from app.models import Note, NoteConnection, Project
 
 
 class KnowledgeResourceNotFound(Exception):
@@ -31,38 +30,21 @@ def _shared_concepts(left: list[str], right: list[str]) -> list[str]:
 
 
 class KnowledgeConnectionService:
+    def __init__(
+        self, repository: KnowledgeConnectionRepository | None = None
+    ) -> None:
+        self._repository = repository or KnowledgeConnectionRepository()
+
     async def list_note_connections(
         self, db: AsyncSession, user_id: UUID, note_id: UUID
     ) -> list[RelatedNote]:
-        note = await db.scalar(
-            select(Note).where(Note.id == note_id, Note.user_id == user_id)
-        )
+        note = await self._repository.find_owned_note(db, user_id, note_id)
         if note is None:
             raise KnowledgeResourceNotFound("Note")
         if note.processing_status != "completed":
             return []
 
-        rows = await db.execute(
-            select(Note, NoteConnection)
-            .join(
-                NoteConnection,
-                or_(
-                    NoteConnection.source_note_id == Note.id,
-                    NoteConnection.target_note_id == Note.id,
-                ),
-            )
-            .where(
-                Note.id != note.id,
-                Note.user_id == user_id,
-                Note.project_id == note.project_id,
-                Note.processing_status == "completed",
-                or_(
-                    NoteConnection.source_note_id == note.id,
-                    NoteConnection.target_note_id == note.id,
-                ),
-            )
-            .order_by(Note.updated_at.desc(), Note.id)
-        )
+        rows = await self._repository.list_note_connections(db, note, user_id)
         results_by_id: dict[UUID, RelatedNote] = {}
         for related, _connection in rows:
             shared_concepts = _shared_concepts(note.concepts, related.concepts)
@@ -78,32 +60,21 @@ class KnowledgeConnectionService:
     async def get_project_graph(
         self, db: AsyncSession, user_id: UUID, project_id: UUID
     ) -> ProjectKnowledgeGraph:
-        project = await db.scalar(
-            select(Project).where(Project.id == project_id, Project.user_id == user_id)
+        project = await self._repository.find_owned_project(
+            db, user_id, project_id
         )
         if project is None:
             raise KnowledgeResourceNotFound("Project")
 
-        notes = list(
-            await db.scalars(
-                select(Note)
-                .where(
-                    Note.user_id == user_id,
-                    Note.project_id == project_id,
-                    Note.processing_status == "completed",
-                )
-                .order_by(Note.updated_at.desc(), Note.id)
-            )
+        notes = await self._repository.list_completed_project_notes(
+            db, user_id, project_id
         )
         note_by_id = {note.id: note for note in notes}
         if not note_by_id:
             return ProjectKnowledgeGraph(nodes=(), edges=())
 
-        connections = await db.scalars(
-            select(NoteConnection).where(
-                NoteConnection.source_note_id.in_(note_by_id),
-                NoteConnection.target_note_id.in_(note_by_id),
-            )
+        connections = await self._repository.list_connections_between(
+            db, set(note_by_id)
         )
         edges_by_pair: dict[tuple[UUID, UUID], KnowledgeGraphEdge] = {}
         for connection in connections:

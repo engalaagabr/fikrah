@@ -8,14 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.chat.contracts import (
-    ConversationCreateCommand,
-    ConversationSummary,
-    MessageCreateCommand,
-    MessageRecord,
-    SourceReference,
-)
-from app.chat.schemas import (
+from app.chat.service import ChatServiceError
+from app.infrastructure.container import chat_service
+from app.infrastructure.persistence.database import get_db_session
+from app.models import User
+from app.schemas.chat import (
     ConversationCreate,
     ConversationDetail,
     ConversationView,
@@ -24,10 +21,13 @@ from app.chat.schemas import (
     MessageView,
     SourceView,
 )
-from app.chat.service import ChatServiceError
-from app.database import get_db_session
-from app.infrastructure.container import chat_service
-from app.models import User
+from app.services.contracts.chat import (
+    ConversationCreateCommand,
+    ConversationSummary,
+    MessageCreateCommand,
+    MessageRecord,
+    SourceReference,
+)
 
 router = APIRouter(tags=["chat"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]

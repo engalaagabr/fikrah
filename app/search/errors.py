@@ -1,5 +1,5 @@
-"""Errors shared by the search use case and its infrastructure adapters."""
+"""Errors raised by search use cases."""
 
 
-class SearchUnavailableError(RuntimeError):
-    """Raised when semantic retrieval cannot reach an embedding/vector service."""
+class SearchProjectNotFound(Exception):
+    """Raised when the requested project is not owned by the caller."""

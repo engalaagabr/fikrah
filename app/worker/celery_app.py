@@ -1,16 +1,14 @@
 """Celery configuration for Redis-backed FIKRAH jobs."""
 
-import os
-
 from celery import Celery
 
-from app.worker.config import WorkerSettings
+from app.core.config import get_settings, get_worker_settings
 
-settings = WorkerSettings.from_env()
+settings = get_worker_settings()
 
 celery_app = Celery(
     "fikrah",
-    broker=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+    broker=get_settings().redis_url,
     include=["app.worker.tasks"],
 )
 celery_app.conf.update(

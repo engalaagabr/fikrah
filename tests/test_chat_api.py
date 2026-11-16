@@ -1,6 +1,6 @@
 import json
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
@@ -10,8 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.auth.security import create_access_token
-from app.database import get_db_session
+from app.core.security import create_access_token
+from app.infrastructure.persistence.database import get_db_session
 from app.llm.contracts import ChatAnswer
 from app.main import app as fastapi_app
 from app.models import (
@@ -269,6 +269,83 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
 
 
 @pytest.mark.asyncio
+async def test_chat_uses_latest_twelve_messages_in_chronological_order(
+    chat_api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, sessions, _, project_id, _, _, _, token, _ = chat_api
+    created = await client.post(
+        f"/v1/projects/{project_id}/conversations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    conversation_id = UUID(created.json()["id"])
+    start = datetime.now(timezone.utc) - timedelta(minutes=1)
+    async with sessions() as session:
+        session.add_all(
+            ChatMessage(
+                conversation_id=conversation_id,
+                role="user" if index % 2 == 0 else "assistant",
+                content=f"history-{index}",
+                created_at=start + timedelta(microseconds=index),
+            )
+            for index in range(14)
+        )
+        await session.commit()
+
+    captured_history: list[dict[str, str]] = []
+
+    class Factory:
+        @staticmethod
+        def create_embedding_model() -> FakeEmbeddingModel:
+            return FakeEmbeddingModel()
+
+        @staticmethod
+        def create_text_generator():
+            class FakeStructuredTextGenerator:
+                def generate_structured(
+                    self, *, system_instruction, user_content, response_model
+                ) -> ChatAnswer:
+                    request = json.loads(user_content)
+                    captured_history.extend(request["conversation_history"])
+                    return ChatAnswer(
+                        answer="I couldn't find an answer supported by your project notes.",
+                        supported=False,
+                        source_note_ids=[],
+                    )
+
+            return FakeStructuredTextGenerator()
+
+    from app.chat import routes as chat_routes
+    from app.search import routes as search_routes
+
+    monkeypatch.setattr(
+        chat_routes.chat_service,
+        "_text_generator_factory",
+        Factory.create_text_generator,
+    )
+    monkeypatch.setattr(
+        search_routes.search_service,
+        "_embedding_model_factory",
+        Factory.create_embedding_model,
+    )
+    monkeypatch.setattr(search_routes.search_service, "_vector_search", lambda *_args: [])
+
+    response = await client.post(
+        f"/v1/conversations/{conversation_id}/messages",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"content": "Summarize the conversation"},
+    )
+    assert response.status_code == 200
+    assert captured_history == [
+        {
+            "role": "user" if index % 2 == 0 else "assistant",
+            "content": f"history-{index}",
+        }
+        for index in range(2, 14)
+    ]
+
+
+@pytest.mark.asyncio
 async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generation(
     chat_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -310,7 +387,7 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
 
     async def run_in_thread(function, *args, **kwargs):
         nonlocal answer_call_seen
-        if getattr(function, "__name__", "") == "answer_question":
+        if function is chat_service_module.answer_project_question:
             answer_call_seen = True
             async with sessions() as session:
                 session.add(
@@ -391,6 +468,47 @@ async def test_chat_conversations_are_isolated_by_user_and_project(chat_api) -> 
         headers={"Authorization": f"Bearer {other_token}"},
     )
     assert hidden_delete.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_deleting_conversation_removes_messages_and_citations(chat_api) -> None:
+    client, sessions, _, project_id, _, note_id, _, token, _ = chat_api
+    created = await client.post(
+        f"/v1/projects/{project_id}/conversations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    conversation_id = UUID(created.json()["id"])
+
+    async with sessions() as session:
+        conversation = await session.get(ChatConversation, conversation_id)
+        assert conversation is not None
+        user_message = ChatMessage(
+            conversation_id=conversation_id, role="user", content="Question"
+        )
+        assistant_message = ChatMessage(
+            conversation_id=conversation_id,
+            role="assistant",
+            content="Answer",
+            supported=True,
+        )
+        session.add_all([user_message, assistant_message])
+        await session.flush()
+        session.add(
+            ChatMessageSource(message_id=assistant_message.id, note_id=note_id)
+        )
+        await session.commit()
+
+    deleted = await client.delete(
+        f"/v1/conversations/{conversation_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert deleted.status_code == 204
+
+    async with sessions() as session:
+        assert await session.get(ChatConversation, conversation_id) is None
+        assert list(await session.scalars(select(ChatMessage))) == []
+        assert list(await session.scalars(select(ChatMessageSource))) == []
 
 
 @pytest.mark.asyncio

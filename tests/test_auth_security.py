@@ -3,7 +3,7 @@ from uuid import uuid4
 import jwt
 import pytest
 
-from app.auth.security import (
+from app.core.security import (
     create_access_token,
     decode_access_token,
     hash_opaque_token,

@@ -156,7 +156,7 @@ def describe_schema(
         return ["  " * depth + "…"]
     properties = schema.get("properties", {})
     if not isinstance(properties, dict):
-        return [f"  " * depth + schema.get("type", "object")]
+        return ["  " * depth + schema.get("type", "object")]
 
     required = set(schema.get("required", []))
     lines: list[str] = []
@@ -169,7 +169,7 @@ def describe_schema(
         description = property_schema.get("description")
         suffix = f" — {description}" if description else ""
         lines.append(
-            f"  " * depth + f"{name}: {property_type} ({marker}){suffix}"
+            "  " * depth + f"{name}: {property_type} ({marker}){suffix}"
         )
         if property_schema.get("properties"):
             lines.extend(
@@ -330,15 +330,17 @@ def run_interactive(tester: EndpointTester, openapi: dict[str, Any]) -> int:
         description = operation.get("description")
         if description:
             print(f"\n{description}")
-        if operation.get("security", openapi.get("security", [])):
+        if (
+            operation.get("security", openapi.get("security", []))
+            and not tester.access_token
+        ):
+            tester.access_token = getpass.getpass(
+                "Bearer access token (input hidden): "
+            ).strip()
             if not tester.access_token:
-                tester.access_token = getpass.getpass(
-                    "Bearer access token (input hidden): "
-                ).strip()
-                if not tester.access_token:
-                    print("This endpoint requires an access token.")
-                    failures += 1
-                    continue
+                print("This endpoint requires an access token.")
+                failures += 1
+                continue
 
         try:
             path = fill_path(template)

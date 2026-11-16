@@ -8,24 +8,24 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.database import get_db_session
 from app.infrastructure.container import note_service
+from app.infrastructure.persistence.database import get_db_session
 from app.models import User
-from app.notes.contracts import (
-    NoteCreateCommand,
-    NoteUpdateCommand,
-    ProposalActionCommand,
-    ProposalUpdateCommand,
-)
-from app.notes.results import NoteResult
-from app.notes.schemas import (
+from app.notes.service import NoteServiceError
+from app.schemas.notes import (
     NoteCreate,
     NoteUpdate,
     NoteView,
     ProposalAction,
     ProposalUpdate,
 )
-from app.notes.service import NoteServiceError
+from app.services.contracts.note_results import NoteResult
+from app.services.contracts.notes import (
+    NoteCreateCommand,
+    NoteUpdateCommand,
+    ProposalActionCommand,
+    ProposalUpdateCommand,
+)
 
 router = APIRouter(tags=["notes"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]

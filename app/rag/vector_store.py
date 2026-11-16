@@ -2,22 +2,23 @@
 
 from __future__ import annotations
 
-import os
 from uuid import UUID
 
 from qdrant_client import QdrantClient, models
 
-from app.search.errors import SearchUnavailableError
+from app.core.config import get_settings
+from app.rag.errors import SearchUnavailableError
 
 
 class QdrantNoteVectorStore:
     """Qdrant adapter for note indexing, removal, and semantic retrieval."""
 
     def __init__(self) -> None:
-        self._url = os.getenv("QDRANT_URL")
-        self._api_key = os.getenv("QDRANT_API_KEY")
-        self._collection = os.getenv("QDRANT_NOTES_COLLECTION", "fikrah-notes")
-        self._dimensions = int(os.getenv("GEMINI_EMBEDDING_DIMENSIONS", "768"))
+        settings = get_settings()
+        self._url = settings.qdrant_url
+        self._api_key = settings.qdrant_api_key
+        self._collection = settings.qdrant_notes_collection
+        self._dimensions = int(settings.gemini_embedding_dimensions)
 
     def _client(self) -> QdrantClient:
         if not self._url:

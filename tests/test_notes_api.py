@@ -9,8 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.auth.security import create_access_token
-from app.database import get_db_session
+from app.core.security import create_access_token
+from app.infrastructure.persistence.database import get_db_session
 from app.main import app as fastapi_app
 from app.models import (
     Note,
@@ -124,6 +124,62 @@ async def test_note_create_retry_update_poll_and_delete(
     async with sessions() as session:
         assert await session.scalar(select(func.count()).select_from(VectorCleanupRequest)) == 1
         assert await session.scalar(select(func.count()).select_from(NoteProcessingJob)) == 0
+
+
+@pytest.mark.asyncio
+async def test_deleting_note_removes_incoming_and_outgoing_connections(
+    note_api: tuple[AsyncClient, async_sessionmaker[AsyncSession], UUID, UUID, UUID, UUID, str, str]
+) -> None:
+    client, sessions, _, _, project_id, _, owner_token, _ = note_api
+    headers = {"Authorization": f"Bearer {owner_token}"}
+    first = await client.post(
+        f"/v1/projects/{project_id}/notes",
+        headers={**headers, "Idempotency-Key": "connection-delete-first"},
+        json={"content": "First note"},
+    )
+    second = await client.post(
+        f"/v1/projects/{project_id}/notes",
+        headers={**headers, "Idempotency-Key": "connection-delete-second"},
+        json={"content": "Second note"},
+    )
+    first_id = UUID(first.json()["id"])
+    second_id = UUID(second.json()["id"])
+
+    async with sessions() as session:
+        session.add_all(
+            [
+                NoteConnection(source_note_id=first_id, target_note_id=second_id),
+                NoteConnection(source_note_id=second_id, target_note_id=first_id),
+            ]
+        )
+        await session.commit()
+
+    deleted = await client.delete(
+        f"/v1/notes/{first_id}", headers=headers
+    )
+    assert deleted.status_code == 204
+
+    async with sessions() as session:
+        assert await session.get(Note, first_id) is None
+        assert await session.get(Note, second_id) is not None
+        assert await session.scalar(
+            select(func.count())
+            .select_from(NoteConnection)
+            .where(
+                (NoteConnection.source_note_id == first_id)
+                | (NoteConnection.target_note_id == first_id)
+            )
+        ) == 0
+        assert await session.scalar(
+            select(func.count())
+            .select_from(NoteProcessingJob)
+            .where(NoteProcessingJob.note_id == first_id)
+        ) == 0
+        assert await session.scalar(
+            select(func.count())
+            .select_from(VectorCleanupRequest)
+            .where(VectorCleanupRequest.note_id == first_id)
+        ) == 1
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import or_, select
 
-from app.infrastructure.sync_database import create_worker_session_factory
+from app.infrastructure.persistence.worker_database import create_worker_session_factory
 from app.models import Note, NoteProcessingJob, VectorCleanupRequest
 
 

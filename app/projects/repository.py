@@ -18,6 +18,9 @@ from app.models import (
 
 
 class ProjectRepository:
+    async def refresh(self, db: AsyncSession, project: Project) -> None:
+        await db.refresh(project)
+
     async def list_for_user(self, db: AsyncSession, user_id: UUID) -> list[Project]:
         result = await db.scalars(
             select(Project)

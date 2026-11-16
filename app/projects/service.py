@@ -5,8 +5,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Project
-from app.projects.contracts import ProjectResult
 from app.projects.repository import ProjectRepository
+from app.services.contracts.projects import ProjectResult
 
 
 class ProjectNotFound(Exception):
@@ -32,7 +32,7 @@ class ProjectService:
     ) -> ProjectResult:
         project = await self._repository.create(db, user_id, name)
         await db.commit()
-        await db.refresh(project)
+        await self._repository.refresh(db, project)
         return self._result(project)
 
     async def get_project(
@@ -52,7 +52,7 @@ class ProjectService:
         project.name = name
         project = await self._repository.save(db, project)
         await db.commit()
-        await db.refresh(project)
+        await self._repository.refresh(db, project)
         return self._result(project)
 
     async def delete_project(

@@ -4,10 +4,22 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.contracts import (
+from app.auth.errors import AuthServiceError
+from app.auth.ports import EmailDeliveryError, GoogleIdentityTokenError
+from app.auth.repository import AuthRepository
+from app.core.security import (
+    DUMMY_PASSWORD_HASH,
+    REFRESH_TOKEN_TTL,
+    create_access_token,
+    hash_opaque_token,
+    hash_password,
+    new_opaque_token,
+    verify_password,
+)
+from app.models import EmailActionToken, Project, RefreshSession, User
+from app.services.contracts.auth import (
     ActionToken,
     AuthMessage,
     AuthTokenPair,
@@ -17,18 +29,6 @@ from app.auth.contracts import (
     PasswordReset,
     RefreshToken,
 )
-from app.auth.errors import AuthServiceError
-from app.auth.ports import EmailDeliveryError, GoogleIdentityTokenError
-from app.auth.security import (
-    DUMMY_PASSWORD_HASH,
-    REFRESH_TOKEN_TTL,
-    create_access_token,
-    hash_opaque_token,
-    hash_password,
-    new_opaque_token,
-    verify_password,
-)
-from app.models import EmailActionToken, EmailSendAttempt, Project, RefreshSession, User
 
 SendActionEmail = Callable[[str, str, str], Awaitable[None]]
 SendWelcomeEmail = Callable[[str], Awaitable[None]]
@@ -46,27 +46,18 @@ def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
-async def _send_limit_available(db: AsyncSession, email: str) -> bool:
+async def _send_limit_available(
+    db: AsyncSession,
+    email: str,
+    repository: AuthRepository | None = None,
+) -> bool:
+    repository = repository or AuthRepository()
     now = datetime.now(timezone.utc)
-    if db.get_bind().dialect.name == "postgresql":
-        # Serialize quota checks per address so concurrent requests cannot exceed
-        # the configured per-email cooldown or hourly maximum.
-        await db.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended(:email, 74192038))"),
-            {"email": email},
-        )
-    recent = await db.scalar(
-        select(func.count(EmailSendAttempt.id)).where(
-            EmailSendAttempt.email == email,
-            EmailSendAttempt.created_at >= now - timedelta(hours=1),
-        )
+    await repository.lock_email_send_attempts(db, email)
+    recent = await repository.count_recent_email_send_attempts(
+        db, email, now - timedelta(hours=1)
     )
-    last = await db.scalar(
-        select(EmailSendAttempt.created_at)
-        .where(EmailSendAttempt.email == email)
-        .order_by(EmailSendAttempt.created_at.desc())
-        .limit(1)
-    )
+    last = await repository.latest_email_send_attempt(db, email)
     if recent is not None and recent >= 5:
         return False
     if last is not None:
@@ -74,26 +65,22 @@ async def _send_limit_available(db: AsyncSession, email: str) -> bool:
         last = _utc(last)
         if last > now - timedelta(seconds=60):
             return False
-    db.add(EmailSendAttempt(email=email))
-    await db.flush()
+    await repository.add_email_send_attempt(db, email)
     return True
 
 
 async def _new_action_token(
-    db: AsyncSession, user: User, purpose: str, lifetime: timedelta
+    db: AsyncSession,
+    user: User,
+    purpose: str,
+    lifetime: timedelta,
+    repository: AuthRepository,
 ) -> str:
     now = datetime.now(timezone.utc)
-    await db.execute(
-        update(EmailActionToken)
-        .where(
-            EmailActionToken.user_id == user.id,
-            EmailActionToken.purpose == purpose,
-            EmailActionToken.used_at.is_(None),
-        )
-        .values(used_at=now)
-    )
+    await repository.retire_open_action_tokens(db, user.id, purpose, now)
     raw = new_opaque_token()
-    db.add(
+    await repository.add_action_token(
+        db,
         EmailActionToken(
             user_id=user.id,
             token_hash=hash_opaque_token(raw),
@@ -101,20 +88,21 @@ async def _new_action_token(
             expires_at=now + lifetime,
         )
     )
-    await db.flush()
     return raw
 
 
-async def _issue_session(db: AsyncSession, user: User) -> AuthTokenPair:
+async def _issue_session(
+    db: AsyncSession, user: User, repository: AuthRepository
+) -> AuthTokenPair:
     refresh = new_opaque_token()
-    db.add(
+    await repository.add_refresh_session(
+        db,
         RefreshSession(
             user_id=user.id,
             token_hash=hash_opaque_token(refresh),
             expires_at=datetime.now(timezone.utc) + REFRESH_TOKEN_TTL,
         )
     )
-    await db.flush()
     return AuthTokenPair(
         access_token=create_access_token(user.id), refresh_token=refresh
     )
@@ -130,26 +118,33 @@ class AuthService:
         send_welcome_email: SendWelcomeEmail,
         verify_google_id_token: VerifyGoogleIdToken,
         google_client_id: GoogleClientId,
+        repository: AuthRepository | None = None,
     ) -> None:
         self.send_action_email = send_action_email
         self.send_welcome_email = send_welcome_email
         self.verify_google_id_token = verify_google_id_token
         self.google_client_id = google_client_id
+        self._repository = repository or AuthRepository()
 
     async def register(self, body: EmailPassword, db: AsyncSession) -> AuthMessage:
         raw_token: str | None = None
         async with db.begin():
-            exists = await db.scalar(select(User.id).where(User.email == body.email))
-            if exists is None and await _send_limit_available(db, body.email):
+            existing_user_id = await self._repository.find_user_id_by_email(
+                db, body.email
+            )
+            if existing_user_id is None and await _send_limit_available(
+                db, body.email, self._repository
+            ):
                 user = User(
                     email=body.email,
                     password_hash=await asyncio.to_thread(hash_password, body.password),
                 )
-                db.add(user)
-                await db.flush()
-                db.add(Project(user_id=user.id, name="General", is_general=True))
+                await self._repository.add_user(db, user)
+                self._repository.add_project(
+                    db, Project(user_id=user.id, name="General", is_general=True)
+                )
                 raw_token = await _new_action_token(
-                    db, user, "verify_email", timedelta(hours=24)
+                    db, user, "verify_email", timedelta(hours=24), self._repository
                 )
         if raw_token is not None:
             try:
@@ -166,13 +161,8 @@ class AuthService:
     async def verify_email(self, body: ActionToken, db: AsyncSession) -> AuthMessage:
         now = datetime.now(timezone.utc)
         async with db.begin():
-            action = await db.scalar(
-                select(EmailActionToken)
-                .where(
-                    EmailActionToken.token_hash == hash_opaque_token(body.token),
-                    EmailActionToken.purpose == "verify_email",
-                )
-                .with_for_update()
+            action = await self._repository.find_action_token(
+                db, hash_opaque_token(body.token), "verify_email"
             )
             if (
                 action is None
@@ -181,7 +171,7 @@ class AuthService:
             ):
                 raise _auth_error(400, "The verification link is invalid or expired")
             action.used_at = now
-            user = await db.get(User, action.user_id)
+            user = await self._repository.get_user(db, action.user_id)
             if user is None:
                 raise _auth_error(400, "The verification link is invalid or expired")
             user.email_verified_at = now
@@ -192,16 +182,16 @@ class AuthService:
     ) -> AuthMessage:
         raw_token: str | None = None
         async with db.begin():
-            user = await db.scalar(
-                select(User).where(User.email == body.email).with_for_update()
+            user = await self._repository.find_user_by_email(
+                db, body.email, lock=True
             )
             if (
                 user is not None
                 and user.email_verified_at is None
-                and await _send_limit_available(db, body.email)
+                and await _send_limit_available(db, body.email, self._repository)
             ):
                 raw_token = await _new_action_token(
-                    db, user, "verify_email", timedelta(hours=24)
+                    db, user, "verify_email", timedelta(hours=24), self._repository
                 )
         if raw_token is not None:
             try:
@@ -215,7 +205,7 @@ class AuthService:
         )
 
     async def login(self, body: EmailPassword, db: AsyncSession) -> AuthTokenPair:
-        user = await db.scalar(select(User).where(User.email == body.email))
+        user = await self._repository.find_user_by_email(db, body.email)
         if user is None or user.password_hash is None:
             await asyncio.to_thread(verify_password, body.password, DUMMY_PASSWORD_HASH)
             raise _auth_error(
@@ -229,7 +219,7 @@ class AuthService:
             )
         if user.email_verified_at is None:
             raise _auth_error(403, "Verify your email before signing in")
-        tokens = await _issue_session(db, user)
+        tokens = await _issue_session(db, user, self._repository)
         await db.commit()
         return tokens
 
@@ -252,11 +242,11 @@ class AuthService:
 
         created_user = False
         async with db.begin():
-            subject_user = await db.scalar(
-                select(User).where(User.google_subject == subject).with_for_update()
+            subject_user = await self._repository.find_user_by_google_subject(
+                db, subject
             )
-            user = await db.scalar(
-                select(User).where(User.email == email).with_for_update()
+            user = await self._repository.find_user_by_email(
+                db, email, lock=True
             )
             if subject_user is not None and subject_user.email != email:
                 raise _auth_error(
@@ -269,9 +259,10 @@ class AuthService:
                     google_subject=subject,
                     email_verified_at=datetime.now(timezone.utc),
                 )
-                db.add(user)
-                await db.flush()
-                db.add(Project(user_id=user.id, name="General", is_general=True))
+                await self._repository.add_user(db, user)
+                self._repository.add_project(
+                    db, Project(user_id=user.id, name="General", is_general=True)
+                )
             elif user.google_subject not in (None, subject):
                 raise _auth_error(
                     409, "This account is linked to a different Google identity"
@@ -281,7 +272,7 @@ class AuthService:
                 user.email_verified_at = user.email_verified_at or datetime.now(
                     timezone.utc
                 )
-            tokens = await _issue_session(db, user)
+            tokens = await _issue_session(db, user, self._repository)
         if created_user:
             try:
                 await self.send_welcome_email(email)
@@ -296,16 +287,16 @@ class AuthService:
     ) -> AuthMessage:
         raw_token: str | None = None
         async with db.begin():
-            user = await db.scalar(
-                select(User).where(User.email == body.email).with_for_update()
+            user = await self._repository.find_user_by_email(
+                db, body.email, lock=True
             )
             if (
                 user is not None
                 and user.password_hash is not None
-                and await _send_limit_available(db, body.email)
+                and await _send_limit_available(db, body.email, self._repository)
             ):
                 raw_token = await _new_action_token(
-                    db, user, "reset_password", timedelta(hours=1)
+                    db, user, "reset_password", timedelta(hours=1), self._repository
                 )
         if raw_token is not None:
             try:
@@ -323,13 +314,8 @@ class AuthService:
     ) -> AuthMessage:
         now = datetime.now(timezone.utc)
         async with db.begin():
-            action = await db.scalar(
-                select(EmailActionToken)
-                .where(
-                    EmailActionToken.token_hash == hash_opaque_token(body.token),
-                    EmailActionToken.purpose == "reset_password",
-                )
-                .with_for_update()
+            action = await self._repository.find_action_token(
+                db, hash_opaque_token(body.token), "reset_password"
             )
             if (
                 action is None
@@ -338,31 +324,22 @@ class AuthService:
             ):
                 raise _auth_error(400, "The password reset link is invalid or expired")
             action.used_at = now
-            user = await db.get(User, action.user_id)
+            user = await self._repository.get_user(db, action.user_id)
             if user is None:
                 raise _auth_error(400, "The password reset link is invalid or expired")
             user.password_hash = await asyncio.to_thread(
                 hash_password, body.new_password
             )
-            await db.execute(
-                update(RefreshSession)
-                .where(
-                    RefreshSession.user_id == user.id,
-                    RefreshSession.revoked_at.is_(None),
-                )
-                .values(revoked_at=now)
+            await self._repository.revoke_active_refresh_sessions(
+                db, user.id, now
             )
         return AuthMessage(message="Password reset successfully")
 
     async def refresh(self, body: RefreshToken, db: AsyncSession) -> AuthTokenPair:
         now = datetime.now(timezone.utc)
         async with db.begin():
-            previous = await db.scalar(
-                select(RefreshSession)
-                .where(
-                    RefreshSession.token_hash == hash_opaque_token(body.refresh_token)
-                )
-                .with_for_update()
+            previous = await self._repository.find_refresh_session(
+                db, hash_opaque_token(body.refresh_token), lock=True
             )
             if (
                 previous is None
@@ -370,14 +347,12 @@ class AuthService:
                 or _utc(previous.expires_at) <= now
             ):
                 raise _auth_error(401, "Invalid or expired refresh token")
-            user = await db.get(User, previous.user_id)
+            user = await self._repository.get_user(db, previous.user_id)
             if user is None:
                 raise _auth_error(401, "Invalid or expired refresh token")
-            tokens = await _issue_session(db, user)
-            replacement = await db.scalar(
-                select(RefreshSession).where(
-                    RefreshSession.token_hash == hash_opaque_token(tokens.refresh_token)
-                )
+            tokens = await _issue_session(db, user, self._repository)
+            replacement = await self._repository.find_refresh_session(
+                db, hash_opaque_token(tokens.refresh_token)
             )
             previous.revoked_at = now
             previous.replaced_by_id = replacement.id
@@ -385,12 +360,8 @@ class AuthService:
 
     async def logout(self, body: RefreshToken, db: AsyncSession) -> AuthMessage:
         async with db.begin():
-            session = await db.scalar(
-                select(RefreshSession)
-                .where(
-                    RefreshSession.token_hash == hash_opaque_token(body.refresh_token)
-                )
-                .with_for_update()
+            session = await self._repository.find_refresh_session(
+                db, hash_opaque_token(body.refresh_token), lock=True
             )
             if session is not None and session.revoked_at is None:
                 session.revoked_at = datetime.now(timezone.utc)
