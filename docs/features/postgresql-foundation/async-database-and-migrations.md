@@ -11,7 +11,7 @@ Provide the Backend with an asynchronous PostgreSQL connection/session foundatio
 - `DATABASE_URL` configures PostgreSQL. Keep credentials outside source control.
 - A shared async engine and session factory are initialized once per process and disposed during FastAPI shutdown.
 - `get_db_session` is available as a FastAPI dependency for database-backed endpoints.
-- Runtime session lifecycle is implemented in `app/infrastructure/persistence/database.py`; Celery uses the synchronous factory in `app/infrastructure/persistence/worker_database.py`.
+- Runtime session lifecycle is implemented in `app/db/session.py`; Celery uses the synchronous factory in `app/db/worker_session.py`.
 - The declarative metadata contains the approved application records; schema changes are tracked through Alembic revisions.
 
 ## Local Setup

@@ -41,7 +41,7 @@ The initial graph response has no pagination or viewport filtering. Pending and 
 
 Connections use the existing `note_connections` PostgreSQL table. No migration is needed. Existing note and project deletion flows already remove every connection involving deleted notes. Qdrant vectors and note text are not changed by relation generation.
 
-HTTP response schemas are defined in `app/connections/schemas.py`. The service returns framework-independent result contracts from `app/connections/contracts.py`, and the route layer maps those results to API responses.
+HTTP response schemas are defined in `app/schemas/connections.py`. The service returns framework-independent result contracts from `app/services/contracts/connections.py`, and the route layer maps those results to API responses.
 
 ## Verification
 

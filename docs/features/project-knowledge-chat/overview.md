@@ -24,7 +24,7 @@ Returns conversation metadata and the full ordered message history. Assistant me
 
 Accepts a non-blank question up to 4,000 characters and returns a complete response in one request. The response includes the persisted user message, assistant message, and updated conversation. Assistant source items contain a note ID and title.
 
-If the project notes do not support an answer, the assistant message has `supported: false` and an empty `sources` array. The answer clearly states that the project notes did not support an answer. Responses use the same language as the question.
+If the project notes do not support an answer, the assistant message has `supported: false` and an empty `sources` array. The answer clearly states that the project notes did not support an answer. The current implementation responds in the question's language; the product language policy remains open, especially when the question and supporting notes use different languages.
 
 ### `DELETE /v1/conversations/{conversation_id}`
 
@@ -43,7 +43,7 @@ Deletes the conversation, all of its messages, and citation records. Deleting a 
 
 `chat_conversations`, `chat_messages`, and `chat_message_sources` store ownership, conversation history, support status, and citations. Cascading foreign keys and explicit deletion paths remove conversations with their project and remove citations when a note is deleted. Migration `20261109_05` creates the tables and indexes.
 
-HTTP request and response models stay in `app/chat/schemas.py`. Routes map validated requests to framework-independent commands in `app/chat/contracts.py`, and map application results back to the API response models. `ChatService` does not depend on Pydantic schemas.
+HTTP request and response models stay in `app/schemas/chat.py`. Routes map validated requests to framework-independent commands in `app/services/contracts/chat.py`, and map application results back to the API response models. `ChatService` does not depend on Pydantic schemas.
 
 ## Verification
 
