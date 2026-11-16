@@ -47,6 +47,8 @@ LLM generates a title during processing only when the user did not supply one. W
 
 ## Refinement proposals — Implemented
 
+The current implementation exposes proposal editing, but whether users should be able to edit a proposal before acceptance remains an open product decision.
+
 | Endpoint | Purpose and why mobile needs it | When mobile calls it | Request information | Response information |
 |---|---|---|---|---|
 | `POST /v1/notes/{note_id}/refinement-regenerations` | Generate a new wording proposal after the user rejected the previous one or requests another version. | When the user asks for another rewrite. | `expected_processing_generation` from the displayed note. | `202` with the proposal cleared and a new queued processing generation. |
@@ -81,7 +83,7 @@ Connections are generated after processing when at least one normalized concept 
 | `POST /v1/conversations/{conversation_id}/messages` | Ask a question and receive an answer grounded in the selected project's notes. | When the user sends a chat message. | Non-blank question text up to 4,000 characters. | Complete user and assistant messages in one response, with `supported` status and validated source note references. When notes do not support an answer, the assistant clearly says so in the question's language and returns no sources. |
 | `DELETE /v1/conversations/{conversation_id}` | Delete a conversation and its chat history. | When the user deletes a conversation. | Conversation ID. | `204`; project deletion also removes its conversations, and note deletion removes citation records for that note. |
 
-Conversation ownership, note-context scoping, and chat history are isolated per user. Retrieval uses up to eight current, completed note vectors from the selected project, verified against PostgreSQL. The latest twelve messages provide follow-up context but are not evidence. Answers use the same language as the question and do not stream. See [`docs/features/project-knowledge-chat/overview.md`](../project-knowledge-chat/overview.md).
+Conversation ownership, note-context scoping, and chat history are isolated per user. Retrieval uses up to eight current, completed note vectors from the selected project, verified against PostgreSQL. The latest twelve messages provide follow-up context but are not evidence. The current implementation answers in the question's language and does not stream; the product language policy remains open. See [`docs/features/project-knowledge-chat/overview.md`](../project-knowledge-chat/overview.md).
 
 ## Deferred product decisions
 

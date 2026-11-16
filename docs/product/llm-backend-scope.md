@@ -51,7 +51,10 @@ Authentication, user accounts, authorization, and enforcement of this data isola
 The LLM layer is responsible for understanding, refining, organizing, connecting, and retrieving knowledge.
 
 An LLM refinement proposal must remain in the same language as the original note.
-Users may edit a refinement proposal before accepting it. Editing the proposal does not change the note; accepting it replaces the note text permanently and triggers processing of the accepted text.
+Accepting it replaces the note text permanently and triggers processing of the
+accepted text. The current implementation also allows users to edit a proposal
+before accepting it, but whether this is required product behavior remains
+unconfirmed.
 
 For LLM chat, answers must be grounded in notes from the selected project. If those notes do not contain enough evidence to answer, the assistant must clearly say that it could not find a supported answer there.
 
@@ -76,6 +79,7 @@ The LLM and Backend owner is responsible for requirements discovery, API design 
 
 Confirm these behaviors with the user before treating them as requirements or designing endpoints around them:
 
+- Whether users can edit an LLM refinement proposal before accepting it.
 - Which languages the application must understand and use for notes, transcriptions, and search.
 - Which language chat should use when the user's question and the relevant notes have different languages, or the project contains notes in multiple languages.
 

@@ -8,11 +8,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.auth.security import create_access_token
-from app.database import get_db_session
+from app.core.security import create_access_token
+from app.db.base import Base
+from app.db.session import get_db_session
 from app.main import app as fastapi_app
 from app.models import Project, User
-from app.models.base import Base
 
 
 @pytest_asyncio.fixture

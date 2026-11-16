@@ -1,56 +1,66 @@
-# Layered Modular Backend Architecture
+# Layer-First Modular Architecture
 
-## Status
+## Purpose
 
-Implemented as a modular monolith. Each product capability is a module; modules use a presentation layer for HTTP, an application layer for use cases, and infrastructure adapters for external systems. PostgreSQL ORM models currently serve as persistence records shared by these layers.
+FIKRAH is a modular monolith organized by technical layer. Each layer has one primary responsibility, and dependencies flow inward from HTTP and worker entry points toward application services and data or provider boundaries.
+
+## Layer map
+
+| Path | Responsibility |
+| --- | --- |
+| `app/main.py` | Create the FastAPI application, configure lifespan, and register routers. |
+| `app/core/` | Shared settings and security primitives. |
+| `app/api/deps.py` | Shared database/authentication dependencies and API-facing service providers. |
+| `app/api/v1/` | Thin HTTP routers and API-to-application mapping, including `/health`. |
+| `app/db/` | Declarative metadata and async/synchronous SQLAlchemy session factories. |
+| `app/models/` | SQLAlchemy persistence models. |
+| `app/schemas/` | Pydantic request and response schemas, grouped by feature. |
+| `app/repositories/` | PostgreSQL reads/writes for API use cases and worker connection updates. API repositories flush; API services own commits. |
+| `app/services/` | Application workflows, service errors/ports, and framework-independent contracts. |
+| `app/llm/` | LLM ports, prompts, use cases, factory, and provider adapters. |
+| `app/rag/` | Embedding, Qdrant, candidate retrieval with PostgreSQL validation, and note processing/indexing orchestration. |
+| `app/workers/` | Celery app configuration and task entry points. Registered task names intentionally retain their historical `app.worker.tasks.*` values. |
+| `app/infrastructure/` | Composition roots and external integrations such as SMTP and Google identity. Worker-specific persistence adapters remain here because they own their existing `session.begin()` transaction boundaries. |
+| `static/emails/` | HTML email templates. |
+| `migrations/` | Alembic environment and versioned schema history; version files stay at the repository root. |
+
+There is no shared logging configuration in the current application. Feature-specific service errors remain next to application services rather than introducing an unused global exception layer.
 
 ## Dependency direction
 
 ```text
-FastAPI routes  →  feature application services  →  feature contracts / LLM ports
-                                              ↑
-Infrastructure adapters (PostgreSQL, Qdrant, Redis/Celery, SMTP, LLM providers)
+HTTP request → API router → application service → repository → PostgreSQL
+                                  │
+                                  ├── LLM use case/provider
+                                  └── RAG retriever/vector store
+
+Celery task → worker composition root → note-processing service → repositories and RAG
 ```
 
-Dependencies point inward at contracts. HTTP handlers translate HTTP input/output and delegate to application services through feature contracts; they do not own business workflows. Application services enforce ownership, lifecycle, and orchestration rules, and report expected failures with application-level errors that routes translate into HTTP responses. Infrastructure contains provider SDKs, external-service calls, configuration, and durable queue/vector-store integration. `app/infrastructure/container.py` is the API composition root; `app/infrastructure/worker_container.py` composes the Celery processing use case separately for the worker runtime.
+Routers validate HTTP input, obtain the authenticated user and application-service instances through `app/api/deps.py`, call services, and map results/errors to HTTP responses. They do not import the infrastructure composition root directly or own SQL, provider SDK calls, or product workflows. `app/infrastructure/container.py` constructs the shared service instances; API providers expose them through FastAPI dependencies.
 
-## Module map
+Application services own API workflow rules, user/project scoping, and transaction commits. API repositories execute database operations and flush when needed; they do not commit. Worker persistence remains a deliberate exception: its existing adapter methods use `session.begin()` so the worker’s atomic transaction boundaries remain unchanged.
 
-| Module | HTTP | Application | Infrastructure boundary |
-|---|---|---|---|
-| Authentication | `app/auth/routes.py` | `app/auth/service.py`, schemas, shared auth dependencies, integration errors in `app/auth/ports.py` | SMTP and Google identity adapters under `app/infrastructure/`, wired through `app/infrastructure/container.py`; PostgreSQL token/session records |
-| Projects | `app/projects/routes.py` | `ProjectService`, result contracts in `app/projects/contracts.py` | `ProjectRepository` and PostgreSQL |
-| Notes | `app/notes/routes.py` | `NoteService`, `NoteProcessingService`, commands in `app/notes/contracts.py` | PostgreSQL sessions, worker processing repository, processing-job outbox, Celery worker |
-| Search | `app/search/routes.py` | `SemanticSearchService`, result contracts in `app/search/contracts.py` | Gemini embeddings and Qdrant adapter |
-| Connections | `app/connections/routes.py` | `KnowledgeConnectionService`, result contracts in `app/connections/contracts.py` | PostgreSQL read/write adapters in `app/connections/` and `app/infrastructure/persistence/` |
-| Chat | `app/chat/routes.py` | `ChatService`, commands and results in `app/chat/contracts.py` | Search use case, configured text-model adapter, PostgreSQL history |
-| LLM | — | result contracts, `StructuredTextGenerator` port, note/chat use cases, prompt definitions | `app/infrastructure/llm/` provider adapters and factory |
-| Worker | — | Celery task entry points in `app/worker/tasks.py` | Sync PostgreSQL sessions, Qdrant vector-store adapter, Celery/Redis |
+Qdrant returns candidate note identifiers and indexed revisions. `app/rag/retriever.py` validates each candidate against PostgreSQL for the authenticated user, selected project, completed state, and current revision before returning it. PostgreSQL remains authoritative.
 
-## LLM boundaries
+## Feature ownership
 
-`app/llm/contracts.py` and `ports.py` define shared results and the `StructuredTextGenerator` boundary. `app/llm/prompts.py` and `use_cases.py` own product prompts and chat workflows; `app/notes/processing.py` orchestrates note analysis and indexing through injected generator, embedding, persistence, and vector-store ports. Provider adapters under `app/infrastructure/llm/providers/` accept structured generation requests and contain only provider transport and response validation; the shared OpenAI-compatible transport is implemented once. `LLMProviderFactory` in `app/infrastructure/llm/factory.py` constructs adapters from deployment configuration; request payloads cannot select a provider or model. Gemini remains the embedding adapter.
-
-## Request and processing flow
-
-1. A route validates the request with a feature schema and passes the authenticated user ID to its application service.
-2. The application service applies ownership and product rules, persists the change, and schedules durable work where required.
-3. Celery task entry points delegate to `NoteProcessingService`; its persistence adapter coordinates revision checks and database transactions, while the Qdrant adapter owns vector operations.
-4. Search retrieves candidate vector IDs from Qdrant and validates ownership, project, completion state, and revision in PostgreSQL before returning notes.
+- Authentication routes and schemas live in `app/api/v1/auth.py` and `app/schemas/auth.py`; authentication workflows and their contracts/errors/ports live in `app/services/`.
+- Projects, notes, search, connections, and chat follow the same split: HTTP in `app/api/v1/`, schemas in `app/schemas/`, workflows in `app/services/`, and database access in `app/repositories/`.
+- `app/llm/prompts.py` and `app/llm/use_cases.py` own prompt composition and model-agnostic LLM workflows. Provider adapters only implement provider transport and structured response handling.
+- `app/rag/pipeline.py` coordinates note analysis and indexing; `app/rag/retriever.py` coordinates vector candidates and PostgreSQL verification.
+- `app/workers/tasks.py` contains Celery task entry points. Provider and session construction lives in worker composition modules, not in route handlers.
 
 ## Rules for future changes
 
-- Keep route modules thin; do not add SQL queries, provider SDK calls, or product decisions to route handlers.
-- Keep prompts and response contracts out of provider adapter modules.
-- Keep external SDKs and service-specific configuration inside `app/infrastructure/`; wire adapters to use cases in the composition root.
-- Keep each feature's request/response schemas and use cases inside that feature module.
-- Keep Celery task functions as transport entry points; put note-processing orchestration in the application service and database/vector operations behind their adapters.
-- Let application services own transaction boundaries. Repositories flush changes but do not commit independently.
-- Pass the authenticated user ID from the API boundary; never accept an owner ID from a client request.
-- Keep PostgreSQL authoritative for user-owned records. Treat Qdrant results as candidates that must be verified against PostgreSQL.
-- Add cross-module dependencies through application-facing contracts/use cases, not by importing another module's route handlers.
-- Name feature and phase documentation files after their document title, using lowercase kebab-case: `docs/features/<feature>/<document-title>.md` and `docs/phases/<phase>/<document-title>.md`. Keep each document inside its feature or phase directory and update links when a filename changes.
-
-## Known migration boundary
-
-The current implementation uses SQLAlchemy ORM records in several application services. This keeps the initial product implementation direct and transactional, but means persistence is not yet abstracted behind a repository in every module. New external integrations must still remain behind infrastructure adapters; additional repositories should be introduced when they provide a clear boundary or testability benefit rather than as boilerplate wrappers.
+- Put HTTP concerns in `app/api/v1/`; keep route functions thin.
+- Put request/response validation in `app/schemas/`; do not return ORM records as API contracts.
+- Put business workflows and ownership rules in `app/services/`.
+- Put API database access in `app/repositories/`; preserve SQL ordering and transaction boundaries when extracting existing code.
+- Keep API service commits outside repositories. Preserve the worker persistence transaction boundaries unless a separately approved behavior-preserving change moves their ownership.
+- Keep prompts out of provider adapters. Select providers through deployment configuration, never from client input.
+- Treat Qdrant search results as untrusted candidates and validate them against PostgreSQL.
+- Keep user identity sourced from the authenticated request context.
+- Preserve public routes, payloads, headers, and status codes during structural changes.
+- Keep Celery task registration names stable even when Python modules move.
+- Put new feature documentation under `docs/features/<feature>/` and phase documentation under `docs/phases/<phase>/`, using a descriptive kebab-case document title.

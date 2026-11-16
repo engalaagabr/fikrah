@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
-from app.database import get_db_session as database_dependency
+from app.db.base import Base
+from app.db.session import (
+    get_db_session as database_dependency,
+)
 from app.main import app as fastapi_app
-from app.models.base import Base
 
 
 @pytest_asyncio.fixture
@@ -53,9 +55,9 @@ async def test_email_auth_verification_refresh_and_logout(
     async def capture_welcome(email: str) -> None:
         welcomed.append(email)
 
-    monkeypatch.setattr("app.auth.routes.auth_service.send_action_email", capture_email)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_action_email", capture_email)
     monkeypatch.setattr(
-        "app.auth.routes.auth_service.send_welcome_email", capture_welcome
+        "app.infrastructure.container.auth_service.send_welcome_email", capture_welcome
     )
     email = "Fikrah.User@example.com"
     password = "a secure passphrase with length"
@@ -84,7 +86,7 @@ async def test_email_auth_verification_refresh_and_logout(
 
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
     monkeypatch.setattr(
-        "app.auth.routes.auth_service.verify_google_id_token",
+        "app.infrastructure.container.auth_service.verify_google_id_token",
         lambda token, audience: {
             "sub": "linked-google-subject",
             "email": email.lower(),
@@ -158,7 +160,7 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
         }
 
     monkeypatch.setattr(
-        "app.auth.routes.auth_service.verify_google_id_token", verify_google_token
+        "app.infrastructure.container.auth_service.verify_google_id_token", verify_google_token
     )
     welcomed: list[str] = []
 
@@ -166,7 +168,7 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
         welcomed.append(email)
 
     monkeypatch.setattr(
-        "app.auth.routes.auth_service.send_welcome_email", capture_welcome
+        "app.infrastructure.container.auth_service.send_welcome_email", capture_welcome
     )
     response = await auth_client.post(
         "/v1/auth/google", json={"id_token": "google-id-token-from-mobile"}
@@ -181,3 +183,108 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
     )
     assert me.status_code == 200
     assert me.json()["email"] == "google.user@example.com"
+
+
+@pytest.mark.asyncio
+async def test_password_reset_revokes_existing_refresh_sessions(
+    auth_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    delivered: list[tuple[str, str, str]] = []
+
+    async def capture_email(email: str, token: str, purpose: str) -> None:
+        delivered.append((email, token, purpose))
+
+    async def allow_email_send(db, email: str, repository=None) -> bool:
+        return True
+
+    async def capture_welcome(email: str) -> None:
+        return None
+
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_action_email", capture_email)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_welcome_email", capture_welcome)
+    monkeypatch.setattr("app.services.auth_service._send_limit_available", allow_email_send)
+
+    email = "reset-user@example.com"
+    old_password = "a secure passphrase before reset"
+    new_password = "a secure passphrase after reset"
+    registration = await auth_client.post(
+        "/v1/auth/register", json={"email": email, "password": old_password}
+    )
+    assert registration.status_code == 202
+    verification = await auth_client.post(
+        "/v1/auth/verify-email", json={"token": delivered[0][1]}
+    )
+    assert verification.status_code == 200
+
+    login = await auth_client.post(
+        "/v1/auth/login", json={"email": email, "password": old_password}
+    )
+    assert login.status_code == 200
+    old_refresh_token = login.json()["refresh_token"]
+
+    requested = await auth_client.post(
+        "/v1/auth/password-reset/request", json={"email": email}
+    )
+    assert requested.status_code == 202
+    assert delivered[-1][2] == "reset_password"
+
+    confirmed = await auth_client.post(
+        "/v1/auth/password-reset/confirm",
+        json={"token": delivered[-1][1], "new_password": new_password},
+    )
+    assert confirmed.status_code == 200
+    old_session_refresh = await auth_client.post(
+        "/v1/auth/refresh", json={"refresh_token": old_refresh_token}
+    )
+    assert old_session_refresh.status_code == 401
+
+    old_password_login = await auth_client.post(
+        "/v1/auth/login", json={"email": email, "password": old_password}
+    )
+    assert old_password_login.status_code == 401
+    new_password_login = await auth_client.post(
+        "/v1/auth/login", json={"email": email, "password": new_password}
+    )
+    assert new_password_login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_resend_verification_replaces_previous_link(
+    auth_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    delivered: list[tuple[str, str, str]] = []
+
+    async def capture_email(email: str, token: str, purpose: str) -> None:
+        delivered.append((email, token, purpose))
+
+    async def capture_welcome(email: str) -> None:
+        return None
+
+    async def allow_email_send(db, email: str, repository=None) -> bool:
+        return True
+
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_action_email", capture_email)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_welcome_email", capture_welcome)
+    monkeypatch.setattr("app.services.auth_service._send_limit_available", allow_email_send)
+
+    email = "resend-user@example.com"
+    registration = await auth_client.post(
+        "/v1/auth/register",
+        json={"email": email, "password": "a secure passphrase for resend"},
+    )
+    assert registration.status_code == 202
+
+    resent = await auth_client.post(
+        "/v1/auth/resend-verification", json={"email": email}
+    )
+    assert resent.status_code == 202
+    assert len(delivered) == 2
+
+    old_link = await auth_client.post(
+        "/v1/auth/verify-email", json={"token": delivered[0][1]}
+    )
+    new_link = await auth_client.post(
+        "/v1/auth/verify-email", json={"token": delivered[1][1]}
+    )
+    assert old_link.status_code == 400
+    assert new_link.status_code == 200

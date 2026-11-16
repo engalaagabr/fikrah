@@ -17,7 +17,8 @@ contain private values and must not be committed.
 
 Importing the `app` package loads `<repository-root>/.env` without replacing
 environment variables already configured by the host process. This covers both
-`uvicorn app.main:app` and `celery -A app.worker.celery_app worker` entry points.
+`uvicorn app.main:app` and `celery -A app.workers.celery_app:celery_app worker`
+entry points.
 
 ## Local defaults and required integrations
 

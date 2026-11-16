@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from qdrant_client import models
 
-import app.infrastructure.vector_store.qdrant as search_service
+import app.rag.vector_store as search_service
 
 
 def test_qdrant_search_filters_by_user_and_project_and_returns_revision(

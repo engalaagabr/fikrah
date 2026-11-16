@@ -6,10 +6,10 @@ Keep note use cases independent from FastAPI response schemas and prevent SQLAlc
 
 ## Design
 
-- `app/notes/results.py` defines the immutable `NoteResult` returned by note application use cases.
+- `app/services/contracts/note_results.py` defines the immutable `NoteResult` returned by note application use cases.
 - `NoteService` maps persisted note records to `NoteResult` for create, list, read, update, processing retry, and refinement actions.
 - Idempotent create replay returns the same public result shape while preserving existing fingerprint and deleted-note behavior.
-- `app/notes/routes.py` maps `NoteResult` values to the public `NoteView` schema.
+- `app/api/v1/notes.py` maps `NoteResult` values to the public `NoteView` schema.
 - Concepts are tuples inside the application result and lists at the HTTP boundary.
 
 ## API Impact

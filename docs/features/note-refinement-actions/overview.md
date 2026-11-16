@@ -8,7 +8,7 @@ Implemented. This feature lets a user accept, reject, or regenerate the LLM rewr
 
 - LLM proposes a rewrite in the original note's language while preserving its meaning.
 - The proposal does not replace note content until the user accepts it.
-- The user may edit the proposal before accepting it. Saving an edited proposal leaves note content unchanged and returns a new `processing_generation`; acceptance, rejection, or another edit must use that latest generation.
+- The current implementation allows the user to edit the proposal before accepting it. Saving an edited proposal leaves note content unchanged and returns a new `processing_generation`; acceptance, rejection, or another edit must use that latest generation. Product confirmation for proposal editing is still pending.
 - Accepting permanently replaces the current content with the proposal; no previous-content version is retained. The accepted text is processed like any saved edit.
 - Rejecting removes the proposal and leaves note content unchanged. The user can later request another wording.
 - Regenerating removes the current proposal and queues analysis of the unchanged content.
