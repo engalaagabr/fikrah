@@ -5,8 +5,7 @@ from typing import TypeVar
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import AuthenticatedUser, Db
-from app.infrastructure.container import auth_service
+from app.api.deps import AuthenticatedUser, AuthServiceDependency, Db
 from app.schemas.auth import (
     AuthTokens,
     Credentials,
@@ -61,41 +60,51 @@ async def _tokens(workflow: Awaitable[AuthTokenPair]) -> AuthTokens:
 
 
 @router.post("/register", response_model=Message, status_code=status.HTTP_202_ACCEPTED)
-async def register(body: Credentials, db: Db) -> Message:
+async def register(
+    body: Credentials, db: Db, service: AuthServiceDependency
+) -> Message:
     return await _message(
-        auth_service.register(
+        service.register(
             EmailPassword(email=str(body.email), password=body.password), db
         )
     )
 
 
 @router.post("/verify-email", response_model=Message)
-async def verify_email(body: TokenRequest, db: Db) -> Message:
-    return await _message(auth_service.verify_email(ActionToken(token=body.token), db))
+async def verify_email(
+    body: TokenRequest, db: Db, service: AuthServiceDependency
+) -> Message:
+    return await _message(service.verify_email(ActionToken(token=body.token), db))
 
 
 @router.post(
     "/resend-verification", response_model=Message, status_code=status.HTTP_202_ACCEPTED
 )
-async def resend_verification(body: EmailRequest, db: Db) -> Message:
+async def resend_verification(
+    body: EmailRequest, db: Db, service: AuthServiceDependency
+) -> Message:
     return await _message(
-        auth_service.resend_verification(EmailAddress(email=str(body.email)), db)
+        service.resend_verification(EmailAddress(email=str(body.email)), db)
     )
 
 
 @router.post("/login", response_model=AuthTokens)
-async def login(body: Credentials, db: Db) -> AuthTokens:
+async def login(
+    body: Credentials, db: Db, service: AuthServiceDependency
+) -> AuthTokens:
     return await _tokens(
-        auth_service.login(
+        service.login(
             EmailPassword(email=str(body.email), password=body.password), db
         )
     )
 
 
 @router.post("/google", response_model=AuthTokens)
-async def google_login(body: GoogleLoginRequest, db: Db) -> AuthTokens:
+async def google_login(
+    body: GoogleLoginRequest, db: Db, service: AuthServiceDependency
+) -> AuthTokens:
     return await _tokens(
-        auth_service.google_login(GoogleIdentityToken(id_token=body.id_token), db)
+        service.google_login(GoogleIdentityToken(id_token=body.id_token), db)
     )
 
 
@@ -104,32 +113,40 @@ async def google_login(body: GoogleLoginRequest, db: Db) -> AuthTokens:
     response_model=Message,
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def request_password_reset(body: EmailRequest, db: Db) -> Message:
+async def request_password_reset(
+    body: EmailRequest, db: Db, service: AuthServiceDependency
+) -> Message:
     return await _message(
-        auth_service.request_password_reset(EmailAddress(email=str(body.email)), db)
+        service.request_password_reset(EmailAddress(email=str(body.email)), db)
     )
 
 
 @router.post("/password-reset/confirm", response_model=Message)
-async def confirm_password_reset(body: ResetPasswordRequest, db: Db) -> Message:
+async def confirm_password_reset(
+    body: ResetPasswordRequest, db: Db, service: AuthServiceDependency
+) -> Message:
     return await _message(
-        auth_service.confirm_password_reset(
+        service.confirm_password_reset(
             PasswordReset(token=body.token, new_password=body.new_password), db
         )
     )
 
 
 @router.post("/refresh", response_model=AuthTokens)
-async def refresh(body: RefreshRequest, db: Db) -> AuthTokens:
+async def refresh(
+    body: RefreshRequest, db: Db, service: AuthServiceDependency
+) -> AuthTokens:
     return await _tokens(
-        auth_service.refresh(RefreshToken(refresh_token=body.refresh_token), db)
+        service.refresh(RefreshToken(refresh_token=body.refresh_token), db)
     )
 
 
 @router.post("/logout", response_model=Message)
-async def logout(body: RefreshRequest, db: Db) -> Message:
+async def logout(
+    body: RefreshRequest, db: Db, service: AuthServiceDependency
+) -> Message:
     return await _message(
-        auth_service.logout(RefreshToken(refresh_token=body.refresh_token), db)
+        service.logout(RefreshToken(refresh_token=body.refresh_token), db)
     )
 
 

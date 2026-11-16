@@ -4,8 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
-from app.api.deps import AuthenticatedUser, Db
-from app.infrastructure.container import search_service
+from app.api.deps import AuthenticatedUser, Db, SearchServiceDependency
 from app.rag.errors import SearchUnavailableError
 from app.schemas.search import SearchRequest, SearchResult
 from app.services.contracts.search import SearchMatch
@@ -20,11 +19,10 @@ async def search_project_notes(
     body: SearchRequest,
     user: AuthenticatedUser,
     db: Db,
+    service: SearchServiceDependency,
 ) -> list[SearchResult]:
     try:
-        matches = await search_service.retrieve(
-            db, user.id, project_id, body.query, body.limit
-        )
+        matches = await service.retrieve(db, user.id, project_id, body.query, body.limit)
     except SearchProjectNotFound as error:
         raise HTTPException(status_code=404, detail="Project not found") from error
     except SearchUnavailableError as error:

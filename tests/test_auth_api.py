@@ -55,9 +55,9 @@ async def test_email_auth_verification_refresh_and_logout(
     async def capture_welcome(email: str) -> None:
         welcomed.append(email)
 
-    monkeypatch.setattr("app.api.v1.auth.auth_service.send_action_email", capture_email)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_action_email", capture_email)
     monkeypatch.setattr(
-        "app.api.v1.auth.auth_service.send_welcome_email", capture_welcome
+        "app.infrastructure.container.auth_service.send_welcome_email", capture_welcome
     )
     email = "Fikrah.User@example.com"
     password = "a secure passphrase with length"
@@ -86,7 +86,7 @@ async def test_email_auth_verification_refresh_and_logout(
 
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
     monkeypatch.setattr(
-        "app.api.v1.auth.auth_service.verify_google_id_token",
+        "app.infrastructure.container.auth_service.verify_google_id_token",
         lambda token, audience: {
             "sub": "linked-google-subject",
             "email": email.lower(),
@@ -160,7 +160,7 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
         }
 
     monkeypatch.setattr(
-        "app.api.v1.auth.auth_service.verify_google_id_token", verify_google_token
+        "app.infrastructure.container.auth_service.verify_google_id_token", verify_google_token
     )
     welcomed: list[str] = []
 
@@ -168,7 +168,7 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
         welcomed.append(email)
 
     monkeypatch.setattr(
-        "app.api.v1.auth.auth_service.send_welcome_email", capture_welcome
+        "app.infrastructure.container.auth_service.send_welcome_email", capture_welcome
     )
     response = await auth_client.post(
         "/v1/auth/google", json={"id_token": "google-id-token-from-mobile"}
@@ -200,8 +200,8 @@ async def test_password_reset_revokes_existing_refresh_sessions(
     async def capture_welcome(email: str) -> None:
         return None
 
-    monkeypatch.setattr("app.api.v1.auth.auth_service.send_action_email", capture_email)
-    monkeypatch.setattr("app.api.v1.auth.auth_service.send_welcome_email", capture_welcome)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_action_email", capture_email)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_welcome_email", capture_welcome)
     monkeypatch.setattr("app.services.auth_service._send_limit_available", allow_email_send)
 
     email = "reset-user@example.com"
@@ -263,8 +263,8 @@ async def test_resend_verification_replaces_previous_link(
     async def allow_email_send(db, email: str, repository=None) -> bool:
         return True
 
-    monkeypatch.setattr("app.api.v1.auth.auth_service.send_action_email", capture_email)
-    monkeypatch.setattr("app.api.v1.auth.auth_service.send_welcome_email", capture_welcome)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_action_email", capture_email)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_welcome_email", capture_welcome)
     monkeypatch.setattr("app.services.auth_service._send_limit_available", allow_email_send)
 
     email = "resend-user@example.com"

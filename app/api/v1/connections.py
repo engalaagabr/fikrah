@@ -4,8 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
-from app.api.deps import AuthenticatedUser, Db
-from app.infrastructure.container import knowledge_connection_service
+from app.api.deps import AuthenticatedUser, ConnectionServiceDependency, Db
 from app.schemas.connections import (
     GraphEdge,
     GraphNode,
@@ -27,10 +26,13 @@ router = APIRouter(tags=["knowledge graph"])
 
 @router.get("/v1/notes/{note_id}/connections", response_model=list[RelatedNoteView])
 async def list_note_connections(
-    note_id: UUID, user: AuthenticatedUser, db: Db
+    note_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: ConnectionServiceDependency,
 ) -> list[RelatedNoteView]:
     try:
-        related_notes = await knowledge_connection_service.list_note_connections(
+        related_notes = await service.list_note_connections(
             db, user.id, note_id
         )
     except KnowledgeResourceNotFound as error:
@@ -40,12 +42,13 @@ async def list_note_connections(
 
 @router.get("/v1/projects/{project_id}/knowledge-graph", response_model=ProjectGraph)
 async def get_project_knowledge_graph(
-    project_id: UUID, user: AuthenticatedUser, db: Db
+    project_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: ConnectionServiceDependency,
 ) -> ProjectGraph:
     try:
-        graph = await knowledge_connection_service.get_project_graph(
-            db, user.id, project_id
-        )
+        graph = await service.get_project_graph(db, user.id, project_id)
     except KnowledgeResourceNotFound as error:
         raise HTTPException(status_code=404, detail=f"{error} not found") from error
     return _project_graph_view(graph)

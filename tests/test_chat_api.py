@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db_session
+from app.infrastructure import container as service_container
 from app.llm.contracts import ChatAnswer
 from app.main import app as fastapi_app
 from app.models import (
@@ -148,21 +149,19 @@ async def test_chat_persists_messages_and_only_authorized_citations(
 
             return FakeStructuredTextGenerator()
 
-    from app.api.v1 import chat as chat_routes
-    from app.api.v1 import search as search_routes
 
     monkeypatch.setattr(
-        chat_routes.chat_service,
+        service_container.chat_service,
         "_text_generator_factory",
         Factory.create_text_generator,
     )
     monkeypatch.setattr(
-        search_routes.search_service,
+        service_container.search_service,
         "_embedding_model_factory",
         Factory.create_embedding_model,
     )
     monkeypatch.setattr(
-        search_routes.search_service,
+        service_container.search_service,
         "_vector_search",
         lambda *_args: [(note_id, 2, 0.92), (private_note_id, 1, 0.89)],
     )
@@ -235,21 +234,19 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
 
             return FakeStructuredTextGenerator()
 
-    from app.api.v1 import chat as chat_routes
-    from app.api.v1 import search as search_routes
 
     monkeypatch.setattr(
-        chat_routes.chat_service,
+        service_container.chat_service,
         "_text_generator_factory",
         Factory.create_text_generator,
     )
     monkeypatch.setattr(
-        search_routes.search_service,
+        service_container.search_service,
         "_embedding_model_factory",
         Factory.create_embedding_model,
     )
     monkeypatch.setattr(
-        search_routes.search_service, "_vector_search", lambda *_args: []
+        service_container.search_service, "_vector_search", lambda *_args: []
     )
     created = await client.post(
         f"/v1/projects/{project_id}/conversations",
@@ -315,20 +312,18 @@ async def test_chat_uses_latest_twelve_messages_in_chronological_order(
 
             return FakeStructuredTextGenerator()
 
-    from app.api.v1 import chat as chat_routes
-    from app.api.v1 import search as search_routes
 
     monkeypatch.setattr(
-        chat_routes.chat_service,
+        service_container.chat_service,
         "_text_generator_factory",
         Factory.create_text_generator,
     )
     monkeypatch.setattr(
-        search_routes.search_service,
+        service_container.search_service,
         "_embedding_model_factory",
         Factory.create_embedding_model,
     )
-    monkeypatch.setattr(search_routes.search_service, "_vector_search", lambda *_args: [])
+    monkeypatch.setattr(service_container.search_service, "_vector_search", lambda *_args: [])
 
     response = await client.post(
         f"/v1/conversations/{conversation_id}/messages",
@@ -379,8 +374,6 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
 
             return FakeStructuredTextGenerator()
 
-    from app.api.v1 import chat as chat_routes
-    from app.api.v1 import search as search_routes
     from app.services import chat_service as chat_service_module
 
     original_to_thread = chat_service_module.asyncio.to_thread
@@ -401,17 +394,17 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
         return await original_to_thread(function, *args, **kwargs)
 
     monkeypatch.setattr(
-        chat_routes.chat_service,
+        service_container.chat_service,
         "_text_generator_factory",
         Factory.create_text_generator,
     )
     monkeypatch.setattr(
-        search_routes.search_service,
+        service_container.search_service,
         "_embedding_model_factory",
         Factory.create_embedding_model,
     )
     monkeypatch.setattr(
-        search_routes.search_service, "_vector_search", lambda *_args: []
+        service_container.search_service, "_vector_search", lambda *_args: []
     )
     monkeypatch.setattr(chat_service_module.asyncio, "to_thread", run_in_thread)
     response = await client.post(

@@ -6,8 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
 
-from app.api.deps import AuthenticatedUser, Db
-from app.infrastructure.container import note_service
+from app.api.deps import AuthenticatedUser, Db, NoteServiceDependency
 from app.schemas.notes import (
     NoteCreate,
     NoteUpdate,
@@ -63,12 +62,13 @@ async def create_note(
     body: NoteCreate,
     user: AuthenticatedUser,
     db: Db,
+    service: NoteServiceDependency,
     idempotency_key: Annotated[
         str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
     ],
 ) -> NoteView:
     note = await _execute(
-        note_service.create_note(
+        service.create_note(
             db,
             user.id,
             project_id,
@@ -81,28 +81,40 @@ async def create_note(
 
 @router.get("/v1/projects/{project_id}/notes", response_model=list[NoteView])
 async def list_project_notes(
-    project_id: UUID, user: AuthenticatedUser, db: Db
+    project_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
 ) -> list[NoteView]:
-    notes = await _execute(note_service.list_project_notes(db, user.id, project_id))
+    notes = await _execute(service.list_project_notes(db, user.id, project_id))
     return [_note_view(note) for note in notes]
 
 
 @router.get("/v1/notes/{note_id}", response_model=NoteView)
-async def get_note(note_id: UUID, user: AuthenticatedUser, db: Db) -> NoteView:
-    note = await _execute(note_service.get_note(db, user.id, note_id))
+async def get_note(
+    note_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
+) -> NoteView:
+    note = await _execute(service.get_note(db, user.id, note_id))
     return _note_view(note)
 
 
 @router.patch("/v1/notes/{note_id}", response_model=NoteView)
 async def update_note(
-    note_id: UUID, body: NoteUpdate, user: AuthenticatedUser, db: Db
+    note_id: UUID,
+    body: NoteUpdate,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
 ) -> NoteView:
     command = NoteUpdateCommand(
         content=body.content,
         title=body.title,
         provided_fields=frozenset(body.model_fields_set),
     )
-    note = await _execute(note_service.update_note(db, user.id, note_id, command))
+    note = await _execute(service.update_note(db, user.id, note_id, command))
     return _note_view(note)
 
 
@@ -112,9 +124,12 @@ async def update_note(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def retry_note_processing(
-    note_id: UUID, user: AuthenticatedUser, db: Db
+    note_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
 ) -> NoteView:
-    note = await _execute(note_service.retry_processing(db, user.id, note_id))
+    note = await _execute(service.retry_processing(db, user.id, note_id))
     return _note_view(note)
 
 
@@ -124,10 +139,14 @@ async def retry_note_processing(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def regenerate_refinement(
-    note_id: UUID, body: ProposalAction, user: AuthenticatedUser, db: Db
+    note_id: UUID,
+    body: ProposalAction,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(
-        note_service.regenerate_refinement(
+        service.regenerate_refinement(
             db,
             user.id,
             note_id,
@@ -141,10 +160,14 @@ async def regenerate_refinement(
 
 @router.patch("/v1/notes/{note_id}/refinement-proposal", response_model=NoteView)
 async def update_refinement_proposal(
-    note_id: UUID, body: ProposalUpdate, user: AuthenticatedUser, db: Db
+    note_id: UUID,
+    body: ProposalUpdate,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(
-        note_service.update_refinement_proposal(
+        service.update_refinement_proposal(
             db,
             user.id,
             note_id,
@@ -159,10 +182,14 @@ async def update_refinement_proposal(
 
 @router.post("/v1/notes/{note_id}/refinement-acceptance", response_model=NoteView)
 async def accept_refinement(
-    note_id: UUID, body: ProposalAction, user: AuthenticatedUser, db: Db
+    note_id: UUID,
+    body: ProposalAction,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(
-        note_service.accept_refinement(
+        service.accept_refinement(
             db,
             user.id,
             note_id,
@@ -176,10 +203,14 @@ async def accept_refinement(
 
 @router.post("/v1/notes/{note_id}/refinement-rejections", response_model=NoteView)
 async def reject_refinement(
-    note_id: UUID, body: ProposalAction, user: AuthenticatedUser, db: Db
+    note_id: UUID,
+    body: ProposalAction,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(
-        note_service.reject_refinement(
+        service.reject_refinement(
             db,
             user.id,
             note_id,
@@ -192,6 +223,11 @@ async def reject_refinement(
 
 
 @router.delete("/v1/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_note(note_id: UUID, user: AuthenticatedUser, db: Db) -> Response:
-    await _execute(note_service.delete_note(db, user.id, note_id))
+async def delete_note(
+    note_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: NoteServiceDependency,
+) -> Response:
+    await _execute(service.delete_note(db, user.id, note_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)

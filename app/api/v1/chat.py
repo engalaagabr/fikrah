@@ -6,8 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app.api.deps import AuthenticatedUser, Db
-from app.infrastructure.container import chat_service
+from app.api.deps import AuthenticatedUser, ChatServiceDependency, Db
 from app.schemas.chat import (
     ConversationCreate,
     ConversationDetail,
@@ -34,10 +33,13 @@ T = TypeVar("T")
     "/v1/projects/{project_id}/conversations", response_model=list[ConversationView]
 )
 async def list_conversations(
-    project_id: UUID, user: AuthenticatedUser, db: Db
+    project_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: ChatServiceDependency,
 ) -> list[ConversationView]:
     conversations = await _execute(
-        chat_service.list_conversations(db, user.id, project_id)
+        service.list_conversations(db, user.id, project_id)
     )
     return [_conversation_view(item) for item in conversations]
 
@@ -52,9 +54,10 @@ async def create_conversation(
     body: ConversationCreate,
     user: AuthenticatedUser,
     db: Db,
+    service: ChatServiceDependency,
 ) -> ConversationView:
     conversation = await _execute(
-        chat_service.create_conversation(
+        service.create_conversation(
             db,
             user.id,
             project_id,
@@ -66,10 +69,13 @@ async def create_conversation(
 
 @router.get("/v1/conversations/{conversation_id}", response_model=ConversationDetail)
 async def get_conversation(
-    conversation_id: UUID, user: AuthenticatedUser, db: Db
+    conversation_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: ChatServiceDependency,
 ) -> ConversationDetail:
     conversation = await _execute(
-        chat_service.get_conversation(db, user.id, conversation_id)
+        service.get_conversation(db, user.id, conversation_id)
     )
     return ConversationDetail(
         **_conversation_view(conversation.conversation).model_dump(),
@@ -86,9 +92,10 @@ async def send_message(
     body: MessageCreate,
     user: AuthenticatedUser,
     db: Db,
+    service: ChatServiceDependency,
 ) -> MessageSubmission:
     submission = await _execute(
-        chat_service.send_message(
+        service.send_message(
             db,
             user.id,
             conversation_id,
@@ -106,9 +113,12 @@ async def send_message(
     "/v1/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def delete_conversation(
-    conversation_id: UUID, user: AuthenticatedUser, db: Db
+    conversation_id: UUID,
+    user: AuthenticatedUser,
+    db: Db,
+    service: ChatServiceDependency,
 ) -> Response:
-    await _execute(chat_service.delete_conversation(db, user.id, conversation_id))
+    await _execute(service.delete_conversation(db, user.id, conversation_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

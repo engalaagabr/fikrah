@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db_session
+from app.infrastructure import container as service_container
 from app.main import app as fastapi_app
 from app.models import Note, Project, User
 
@@ -128,7 +129,6 @@ class FakeEmbeddingModel:
 async def test_search_returns_only_authorized_current_completed_notes(
     search_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.api.v1 import search as search_routes
 
     (
         client,
@@ -162,11 +162,11 @@ async def test_search_returns_only_authorized_current_completed_notes(
         ]
 
     monkeypatch.setattr(
-        search_routes.search_service,
+        service_container.search_service,
         "_embedding_model_factory",
         Factory.create_embedding_model,
     )
-    monkeypatch.setattr(search_routes.search_service, "_vector_search", find_vectors)
+    monkeypatch.setattr(service_container.search_service, "_vector_search", find_vectors)
 
     response = await client.post(
         f"/v1/projects/{project_id}/search",
@@ -185,7 +185,6 @@ async def test_search_returns_only_authorized_current_completed_notes(
 async def test_search_is_scoped_to_the_authenticated_user_and_selected_project(
     search_api, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.api.v1 import search as search_routes
 
     client, _, _, other_project_id, _, _, _, _, _, token = search_api
 
@@ -193,7 +192,7 @@ async def test_search_is_scoped_to_the_authenticated_user_and_selected_project(
         raise AssertionError("Qdrant must not be queried for another user's project")
 
     monkeypatch.setattr(
-        search_routes.search_service, "_vector_search", unexpected_search
+        service_container.search_service, "_vector_search", unexpected_search
     )
     response = await client.post(
         f"/v1/projects/{other_project_id}/search",
