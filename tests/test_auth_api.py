@@ -7,11 +7,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
-from app.infrastructure.persistence.database import (
+from app.db.base import Base
+from app.db.session import (
     get_db_session as database_dependency,
 )
 from app.main import app as fastapi_app
-from app.models.base import Base
 
 
 @pytest_asyncio.fixture

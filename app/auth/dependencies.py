@@ -8,7 +8,7 @@ from jwt.exceptions import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_access_token
-from app.infrastructure.persistence.database import get_db_session
+from app.db.session import get_db_session
 from app.models import User
 
 bearer = HTTPBearer(auto_error=False)

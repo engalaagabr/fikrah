@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.db.base import Base
 
 
 class ChatConversation(Base):

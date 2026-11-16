@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select, text
 
 from app.connections.persistence import refresh_note_connections
-from app.infrastructure.persistence.worker_database import create_worker_session_factory
+from app.db.worker_session import create_worker_session_factory
 from app.llm.contracts import NoteAnalysis
 from app.models import Note, NoteProcessingJob
 from app.rag.pipeline import NoteProcessingSnapshot

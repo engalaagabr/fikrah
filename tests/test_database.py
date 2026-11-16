@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.infrastructure.persistence.database import close_database, initialize_database
+from app.db.session import close_database, initialize_database
 
 
 def test_initialize_database_creates_asyncpg_engine() -> None:

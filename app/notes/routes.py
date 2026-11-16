@@ -8,8 +8,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
+from app.db.session import get_db_session
 from app.infrastructure.container import note_service
-from app.infrastructure.persistence.database import get_db_session
 from app.models import User
 from app.notes.service import NoteServiceError
 from app.schemas.notes import (

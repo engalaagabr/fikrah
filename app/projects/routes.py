@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
+from app.db.session import get_db_session
 from app.infrastructure.container import project_service
-from app.infrastructure.persistence.database import get_db_session
 from app.models import User
 from app.projects.service import (
     GeneralProjectProtected,

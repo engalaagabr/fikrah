@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.connections.persistence import refresh_note_connections
+from app.db.base import Base
 from app.infrastructure import worker_container
 from app.llm.contracts import NoteAnalysis
 from app.models import (
@@ -18,7 +19,6 @@ from app.models import (
     User,
     VectorCleanupRequest,
 )
-from app.models.base import Base
 from app.worker.tasks import process_note_job
 
 

@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.auth.service import _send_limit_available
+from app.db.base import Base
 from app.models import EmailSendAttempt
-from app.models.base import Base
 
 
 @pytest.mark.asyncio

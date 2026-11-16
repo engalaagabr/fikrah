@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
 from app.chat.service import ChatServiceError
+from app.db.session import get_db_session
 from app.infrastructure.container import chat_service
-from app.infrastructure.persistence.database import get_db_session
 from app.models import User
 from app.schemas.chat import (
     ConversationCreate,

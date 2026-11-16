@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.core.security import create_access_token
-from app.infrastructure.persistence.database import get_db_session
+from app.db.base import Base
+from app.db.session import get_db_session
 from app.main import app as fastapi_app
 from app.models import (
     Note,
@@ -21,7 +22,6 @@ from app.models import (
     User,
     VectorCleanupRequest,
 )
-from app.models.base import Base
 
 
 @pytest_asyncio.fixture
