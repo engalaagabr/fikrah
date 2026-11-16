@@ -9,7 +9,7 @@ settings = get_worker_settings()
 celery_app = Celery(
     "fikrah",
     broker=get_settings().redis_url,
-    include=["app.worker.tasks"],
+    include=["app.workers.tasks"],
 )
 celery_app.conf.update(
     task_ignore_result=True,

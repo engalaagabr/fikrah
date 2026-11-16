@@ -19,7 +19,7 @@ from app.models import (
     VectorCleanupRequest,
 )
 from app.repositories.worker_connections import refresh_note_connections
-from app.worker.tasks import process_note_job
+from app.workers.tasks import process_note_job
 
 
 class FakeStructuredTextGenerator:
@@ -331,7 +331,7 @@ def test_stale_processing_generation_does_not_overwrite_new_refinement_request(
 def test_dispatcher_publishes_durable_pending_note_job(
     note_job_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.worker import tasks
+    from app.workers import tasks
 
     database_path, job_id, _ = note_job_db
     published: list[str] = []
@@ -356,8 +356,8 @@ def test_dispatcher_publishes_durable_pending_note_job(
 def test_vector_cleanup_worker_removes_qdrant_point_and_marks_request_complete(
     note_job_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.worker import tasks
-    from app.worker.tasks import delete_note_vector
+    from app.workers import tasks
+    from app.workers.tasks import delete_note_vector
 
     database_path, _, note_id = note_job_db
     engine = create_engine(f"sqlite:///{database_path}")
