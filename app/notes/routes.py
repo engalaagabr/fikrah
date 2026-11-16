@@ -11,7 +11,6 @@ from app.auth.dependencies import current_user
 from app.db.session import get_db_session
 from app.infrastructure.container import note_service
 from app.models import User
-from app.notes.service import NoteServiceError
 from app.schemas.notes import (
     NoteCreate,
     NoteUpdate,
@@ -26,6 +25,7 @@ from app.services.contracts.notes import (
     ProposalActionCommand,
     ProposalUpdateCommand,
 )
+from app.services.notes_service import NoteServiceError
 
 router = APIRouter(tags=["notes"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]

@@ -380,8 +380,8 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
             return FakeStructuredTextGenerator()
 
     from app.chat import routes as chat_routes
-    from app.chat import service as chat_service_module
     from app.search import routes as search_routes
+    from app.services import chat_service as chat_service_module
 
     original_to_thread = chat_service_module.asyncio.to_thread
 

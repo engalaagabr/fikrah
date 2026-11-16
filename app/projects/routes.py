@@ -10,12 +10,12 @@ from app.auth.dependencies import current_user
 from app.db.session import get_db_session
 from app.infrastructure.container import project_service
 from app.models import User
-from app.projects.service import (
+from app.schemas.projects import ProjectInput, ProjectView
+from app.services.contracts.projects import ProjectResult
+from app.services.projects_service import (
     GeneralProjectProtected,
     ProjectNotFound,
 )
-from app.schemas.projects import ProjectInput, ProjectView
-from app.services.contracts.projects import ProjectResult
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 Db = Annotated[AsyncSession, Depends(get_db_session)]

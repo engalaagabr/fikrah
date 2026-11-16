@@ -7,9 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.connections.service import (
-    KnowledgeResourceNotFound,
-)
 from app.db.session import get_db_session
 from app.infrastructure.container import knowledge_connection_service
 from app.models import User
@@ -18,6 +15,9 @@ from app.schemas.connections import (
     GraphNode,
     ProjectGraph,
     RelatedNoteView,
+)
+from app.services.connections_service import (
+    KnowledgeResourceNotFound,
 )
 from app.services.contracts.connections import (
     KnowledgeGraphEdge,

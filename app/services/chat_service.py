@@ -14,7 +14,6 @@ from app.models import ChatConversation, ChatMessage, Project
 from app.rag.errors import SearchUnavailableError
 from app.repositories.chat import ChatRepository
 from app.search.errors import SearchProjectNotFound
-from app.search.service import SemanticSearchService
 from app.services.contracts.chat import (
     ConversationCreateCommand,
     ConversationHistory,
@@ -24,6 +23,7 @@ from app.services.contracts.chat import (
     MessageSubmissionResult,
     SourceReference,
 )
+from app.services.search_service import SemanticSearchService
 
 CHAT_CONTEXT_LIMIT = 8
 CHAT_HISTORY_LIMIT = 12

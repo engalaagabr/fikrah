@@ -202,7 +202,7 @@ async def test_password_reset_revokes_existing_refresh_sessions(
 
     monkeypatch.setattr("app.auth.routes.auth_service.send_action_email", capture_email)
     monkeypatch.setattr("app.auth.routes.auth_service.send_welcome_email", capture_welcome)
-    monkeypatch.setattr("app.auth.service._send_limit_available", allow_email_send)
+    monkeypatch.setattr("app.services.auth_service._send_limit_available", allow_email_send)
 
     email = "reset-user@example.com"
     old_password = "a secure passphrase before reset"
@@ -265,7 +265,7 @@ async def test_resend_verification_replaces_previous_link(
 
     monkeypatch.setattr("app.auth.routes.auth_service.send_action_email", capture_email)
     monkeypatch.setattr("app.auth.routes.auth_service.send_welcome_email", capture_welcome)
-    monkeypatch.setattr("app.auth.service._send_limit_available", allow_email_send)
+    monkeypatch.setattr("app.services.auth_service._send_limit_available", allow_email_send)
 
     email = "resend-user@example.com"
     registration = await auth_client.post(

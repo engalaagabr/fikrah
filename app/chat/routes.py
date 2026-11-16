@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import current_user
-from app.chat.service import ChatServiceError
 from app.db.session import get_db_session
 from app.infrastructure.container import chat_service
 from app.models import User
@@ -21,6 +20,7 @@ from app.schemas.chat import (
     MessageView,
     SourceView,
 )
+from app.services.chat_service import ChatServiceError
 from app.services.contracts.chat import (
     ConversationCreateCommand,
     ConversationSummary,
