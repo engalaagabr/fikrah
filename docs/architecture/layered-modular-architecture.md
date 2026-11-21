@@ -13,7 +13,7 @@ FIKRAH is a modular monolith organized by technical layer. Each layer has one pr
 | `app/api/deps.py` | Shared database/authentication dependencies and API-facing service providers. |
 | `app/api/v1/` | Thin HTTP routers and API-to-application mapping, including `/health`. |
 | `app/db/` | Declarative metadata and async/synchronous SQLAlchemy session factories. |
-| `app/models/` | SQLAlchemy persistence models. |
+| `app/models/` | SQLAlchemy persistence models grouped by ownership: accounts, projects, notes, processing, connections, chat, and email delivery. |
 | `app/schemas/` | Pydantic request and response schemas, grouped by feature. |
 | `app/repositories/` | PostgreSQL reads/writes for API use cases and worker connection updates. API repositories flush; API services own commits. |
 | `app/services/` | Application workflows, service errors/ports, and framework-independent contracts. |
@@ -47,6 +47,7 @@ Qdrant returns candidate note identifiers and indexed revisions. `app/rag/retrie
 
 - Authentication routes and schemas live in `app/api/v1/auth.py` and `app/schemas/auth.py`; authentication workflows and their contracts/errors/ports live in `app/services/`.
 - Projects, notes, search, connections, and chat follow the same split: HTTP in `app/api/v1/`, schemas in `app/schemas/`, workflows in `app/services/`, and database access in `app/repositories/`.
+- Persistence classes live in feature-specific model modules. `auth.py` owns account/authentication tables only; note/project/connection/processing tables are defined once in their respective modules. `app.models` is the canonical model catalog used to load Alembic metadata.
 - `app/llm/prompts.py` and `app/llm/use_cases.py` own prompt composition and model-agnostic LLM workflows. Provider adapters only implement provider transport and structured response handling.
 - `app/rag/pipeline.py` coordinates note analysis and indexing; `app/rag/retriever.py` coordinates vector candidates and PostgreSQL verification.
 - `app/workers/tasks.py` contains Celery task entry points. Provider and session construction lives in worker composition modules, not in route handlers.
