@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -44,12 +45,19 @@ def new_opaque_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def create_access_token(user_id: UUID) -> str:
+@dataclass(frozen=True, slots=True)
+class AccessIdentity:
+    user_id: UUID
+    family_id: UUID
+
+
+def create_access_token(user_id: UUID, family_id: UUID) -> str:
     secret = validate_jwt_secret(get_settings().fikrah_jwt_secret)
     now = datetime.now(timezone.utc)
     return jwt.encode(
         {
             "sub": str(user_id),
+            "sid": str(family_id),
             "type": "access",
             "iat": now,
             "exp": now + ACCESS_TOKEN_TTL,
@@ -60,9 +68,15 @@ def create_access_token(user_id: UUID) -> str:
     )
 
 
-def decode_access_token(token: str) -> UUID:
+def decode_access_token(token: str) -> AccessIdentity:
     secret = validate_jwt_secret(get_settings().fikrah_jwt_secret)
-    payload = jwt.decode(token, secret, algorithms=["HS256"], issuer=JWT_ISSUER)
+    payload = jwt.decode(
+        token,
+        secret,
+        algorithms=["HS256"],
+        issuer=JWT_ISSUER,
+        options={"require": ["sub", "sid", "type", "iat", "exp", "iss"]},
+    )
     if payload.get("type") != "access":
         raise jwt.InvalidTokenError("Wrong token type")
-    return UUID(payload["sub"])
+    return AccessIdentity(UUID(payload["sub"]), UUID(payload["sid"]))

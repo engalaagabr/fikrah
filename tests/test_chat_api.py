@@ -10,7 +10,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db_session
 from app.infrastructure import container as service_container
@@ -24,6 +23,7 @@ from app.models import (
     Project,
     User,
 )
+from tests.auth_helpers import seed_access_token
 
 
 @pytest_asyncio.fixture
@@ -101,8 +101,8 @@ async def chat_api(
             other_project_id,
             note_id,
             private_note_id,
-            create_access_token(owner_id),
-            create_access_token(other.id),
+            await seed_access_token(sessions, owner_id),
+            await seed_access_token(sessions, other.id),
         )
     fastapi_app.dependency_overrides.clear()
     await engine.dispose()

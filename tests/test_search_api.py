@@ -8,12 +8,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db_session
 from app.infrastructure import container as service_container
 from app.main import app as fastapi_app
 from app.models import Note, Project, User
+from tests.auth_helpers import seed_access_token
 
 
 @pytest_asyncio.fixture
@@ -110,7 +110,7 @@ async def search_api(
             stale_id,
             queued_id,
             private_id,
-            create_access_token(owner_id),
+            await seed_access_token(sessions, owner_id),
         )
     fastapi_app.dependency_overrides.clear()
     await engine.dispose()

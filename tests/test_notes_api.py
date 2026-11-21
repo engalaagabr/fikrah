@@ -9,7 +9,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db_session
 from app.main import app as fastapi_app
@@ -22,6 +21,7 @@ from app.models import (
     User,
     VectorCleanupRequest,
 )
+from tests.auth_helpers import seed_access_token
 
 
 @pytest_asyncio.fixture
@@ -62,8 +62,8 @@ async def note_api(
             other_id,
             project_id,
             other_project_id,
-            create_access_token(owner_id),
-            create_access_token(other_id),
+            await seed_access_token(sessions, owner_id),
+            await seed_access_token(sessions, other_id),
         )
     fastapi_app.dependency_overrides.clear()
     await engine.dispose()

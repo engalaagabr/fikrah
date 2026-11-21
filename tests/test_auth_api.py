@@ -286,6 +286,10 @@ async def test_password_reset_revokes_existing_refresh_sessions(
         json={"token": delivered[-1][1], "new_password": new_password},
     )
     assert confirmed.status_code == 200
+    old_access = await auth_client.get(
+        "/v1/auth/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
+    )
+    assert old_access.status_code == 401
     old_session_refresh = await auth_client.post(
         "/v1/auth/refresh", json={"refresh_token": old_refresh_token}
     )
@@ -384,3 +388,44 @@ async def test_previously_linked_subject_can_sign_in_without_email_authority(
         "/v1/auth/google", json={"id_token": "google-token-for-the-linked-account"}
     )
     assert second.status_code == 200
+
+
+async def _verified_test_account(client, monkeypatch):
+    delivered = []
+
+    async def send(email, token, purpose):
+        delivered.append(token)
+
+    async def welcome(email):
+        pass
+
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_action_email", send)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_welcome_email", welcome)
+    credentials = {"email": "session-owner@example.com", "password": "secure session test passphrase"}
+    assert (await client.post("/v1/auth/register", json=credentials)).status_code == 202
+    assert (await client.post("/v1/auth/verify-email", json={"token": delivered[0]})).status_code == 200
+    return credentials
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_access_only_for_its_session_family(auth_client, monkeypatch):
+    credentials = await _verified_test_account(auth_client, monkeypatch)
+    first = (await auth_client.post("/v1/auth/login", json=credentials)).json()
+    other = (await auth_client.post("/v1/auth/login", json=credentials)).json()
+    rotated = (await auth_client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})).json()
+    # Rotation keeps the family alive, including its unexpired access tokens.
+    assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {first['access_token']}"})).status_code == 200
+    assert (await auth_client.post("/v1/auth/logout", json={"refresh_token": rotated["refresh_token"]})).status_code == 200
+    for tokens in (first, rotated):
+        assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"})).status_code == 401
+    assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {other['access_token']}"})).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_refresh_replay_commits_revocation_of_active_replacement(auth_client, monkeypatch):
+    credentials = await _verified_test_account(auth_client, monkeypatch)
+    first = (await auth_client.post("/v1/auth/login", json=credentials)).json()
+    replacement = (await auth_client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})).json()
+    assert (await auth_client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})).status_code == 401
+    assert (await auth_client.post("/v1/auth/refresh", json={"refresh_token": replacement["refresh_token"]})).status_code == 401
+    assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {replacement['access_token']}"})).status_code == 401

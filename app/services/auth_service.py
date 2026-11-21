@@ -3,12 +3,14 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
     DUMMY_PASSWORD_HASH,
     REFRESH_TOKEN_TTL,
+    AccessIdentity,
     create_access_token,
     hash_opaque_token,
     hash_password,
@@ -86,25 +88,29 @@ async def _new_action_token(
             token_hash=hash_opaque_token(raw),
             purpose=purpose,
             expires_at=now + lifetime,
-        )
+        ),
     )
     return raw
 
 
 async def _issue_session(
-    db: AsyncSession, user: User, repository: AuthRepository
+    db: AsyncSession,
+    user: User,
+    repository: AuthRepository,
+    family_id: UUID | None = None,
 ) -> AuthTokenPair:
     refresh = new_opaque_token()
-    await repository.add_refresh_session(
-        db,
-        RefreshSession(
-            user_id=user.id,
-            token_hash=hash_opaque_token(refresh),
-            expires_at=datetime.now(timezone.utc) + REFRESH_TOKEN_TTL,
-        )
+    session = RefreshSession(
+        user_id=user.id,
+        token_hash=hash_opaque_token(refresh),
+        expires_at=datetime.now(timezone.utc) + REFRESH_TOKEN_TTL,
     )
+    if family_id is not None:
+        session.family_id = family_id
+    await repository.add_refresh_session(db, session)
     return AuthTokenPair(
-        access_token=create_access_token(user.id), refresh_token=refresh
+        access_token=create_access_token(user.id, session.family_id),
+        refresh_token=refresh,
     )
 
 
@@ -125,6 +131,42 @@ class AuthService:
         self.verify_google_id_token = verify_google_id_token
         self.google_client_id = google_client_id
         self._repository = repository or AuthRepository()
+
+    async def authenticated_user(
+        self, db: AsyncSession, identity: AccessIdentity
+    ) -> User:
+        user = await self._repository.active_session_user(
+            db, identity.user_id, identity.family_id, datetime.now(timezone.utc)
+        )
+        if user is None:
+            raise _auth_error(401, "Invalid or expired access token")
+        return user
+
+    async def _locked_action_user(
+        self, db: AsyncSession, token: str, purpose: str
+    ) -> tuple[EmailActionToken, User]:
+        token_hash = hash_opaque_token(token)
+        initial = await self._repository.find_action_token(
+            db, token_hash, purpose, lock=False
+        )
+        message = (
+            "The verification link is invalid or expired"
+            if purpose == "verify_email"
+            else "The password reset link is invalid or expired"
+        )
+        if initial is None:
+            raise _auth_error(400, message)
+        user = await self._repository.get_user(db, initial.user_id, lock=True)
+        action = await self._repository.find_action_token(db, token_hash, purpose)
+        now = datetime.now(timezone.utc)
+        if (
+            user is None
+            or action is None
+            or action.used_at is not None
+            or _utc(action.expires_at) <= now
+        ):
+            raise _auth_error(400, message)
+        return action, user
 
     async def register(self, body: EmailPassword, db: AsyncSession) -> AuthMessage:
         raw_token: str | None = None
@@ -162,19 +204,10 @@ class AuthService:
     async def verify_email(self, body: ActionToken, db: AsyncSession) -> AuthMessage:
         now = datetime.now(timezone.utc)
         async with db.begin():
-            action = await self._repository.find_action_token(
-                db, hash_opaque_token(body.token), "verify_email"
+            action, user = await self._locked_action_user(
+                db, body.token, "verify_email"
             )
-            if (
-                action is None
-                or action.used_at is not None
-                or _utc(action.expires_at) <= now
-            ):
-                raise _auth_error(400, "The verification link is invalid or expired")
             action.used_at = now
-            user = await self._repository.get_user(db, action.user_id)
-            if user is None:
-                raise _auth_error(400, "The verification link is invalid or expired")
             user.email_verified_at = now
         return AuthMessage(message="Email verified")
 
@@ -183,9 +216,7 @@ class AuthService:
     ) -> AuthMessage:
         raw_token: str | None = None
         async with db.begin():
-            user = await self._repository.find_user_by_email(
-                db, body.email, lock=True
-            )
+            user = await self._repository.find_user_by_email(db, body.email, lock=True)
             if (
                 user is not None
                 and user.email_verified_at is None
@@ -206,7 +237,7 @@ class AuthService:
         )
 
     async def login(self, body: EmailPassword, db: AsyncSession) -> AuthTokenPair:
-        user = await self._repository.find_user_by_email(db, body.email)
+        user = await self._repository.find_user_by_email(db, body.email, lock=True)
         if user is None or user.password_hash is None:
             await asyncio.to_thread(verify_password, body.password, DUMMY_PASSWORD_HASH)
             raise _auth_error(
@@ -252,11 +283,10 @@ class AuthService:
             )
             if subject_user is None and not authoritative_email:
                 raise _auth_error(
-                    401, "Google cannot establish current ownership of this email address"
+                    401,
+                    "Google cannot establish current ownership of this email address",
                 )
-            user = await self._repository.find_user_by_email(
-                db, email, lock=True
-            )
+            user = await self._repository.find_user_by_email(db, email, lock=True)
             if subject_user is not None and subject_user.email != email:
                 raise _auth_error(
                     409, "The Google identity is linked to a different email address"
@@ -305,9 +335,7 @@ class AuthService:
     ) -> AuthMessage:
         raw_token: str | None = None
         async with db.begin():
-            user = await self._repository.find_user_by_email(
-                db, body.email, lock=True
-            )
+            user = await self._repository.find_user_by_email(db, body.email, lock=True)
             if (
                 user is not None
                 and user.password_hash is not None
@@ -332,55 +360,60 @@ class AuthService:
     ) -> AuthMessage:
         now = datetime.now(timezone.utc)
         async with db.begin():
-            action = await self._repository.find_action_token(
-                db, hash_opaque_token(body.token), "reset_password"
+            action, user = await self._locked_action_user(
+                db, body.token, "reset_password"
             )
-            if (
-                action is None
-                or action.used_at is not None
-                or _utc(action.expires_at) <= now
-            ):
-                raise _auth_error(400, "The password reset link is invalid or expired")
             action.used_at = now
-            user = await self._repository.get_user(db, action.user_id)
-            if user is None:
-                raise _auth_error(400, "The password reset link is invalid or expired")
             user.password_hash = await asyncio.to_thread(
                 hash_password, body.new_password
             )
-            await self._repository.revoke_active_refresh_sessions(
-                db, user.id, now
-            )
+            await self._repository.revoke_active_refresh_sessions(db, user.id, now)
         return AuthMessage(message="Password reset successfully")
 
     async def refresh(self, body: RefreshToken, db: AsyncSession) -> AuthTokenPair:
         now = datetime.now(timezone.utc)
+        tokens: AuthTokenPair | None = None
         async with db.begin():
-            previous = await self._repository.find_refresh_session(
-                db, hash_opaque_token(body.refresh_token), lock=True
+            initial = await self._repository.find_refresh_session(
+                db, hash_opaque_token(body.refresh_token)
             )
-            if (
-                previous is None
-                or previous.revoked_at is not None
-                or _utc(previous.expires_at) <= now
-            ):
-                raise _auth_error(401, "Invalid or expired refresh token")
-            user = await self._repository.get_user(db, previous.user_id)
-            if user is None:
-                raise _auth_error(401, "Invalid or expired refresh token")
-            tokens = await _issue_session(db, user, self._repository)
-            replacement = await self._repository.find_refresh_session(
-                db, hash_opaque_token(tokens.refresh_token)
-            )
-            previous.revoked_at = now
-            previous.replaced_by_id = replacement.id
+            if initial is not None:
+                user = await self._repository.get_user(db, initial.user_id, lock=True)
+                previous = await self._repository.find_refresh_session(
+                    db, hash_opaque_token(body.refresh_token), lock=True
+                )
+                if user is not None and previous is not None:
+                    if previous.revoked_at is not None:
+                        # Commit containment before raising; an exception inside
+                        # db.begin() would roll this revocation back.
+                        await self._repository.revoke_refresh_family(
+                            db, user.id, previous.family_id, now
+                        )
+                    elif (
+                        _utc(previous.expires_at) > now
+                        and user.email_verified_at is not None
+                    ):
+                        tokens = await _issue_session(
+                            db, user, self._repository, previous.family_id
+                        )
+                        replacement = await self._repository.find_refresh_session(
+                            db, hash_opaque_token(tokens.refresh_token)
+                        )
+                        previous.revoked_at = now
+                        previous.replaced_by_id = replacement.id
+        if tokens is None:
+            raise _auth_error(401, "Invalid or expired refresh token")
         return tokens
 
     async def logout(self, body: RefreshToken, db: AsyncSession) -> AuthMessage:
         async with db.begin():
             session = await self._repository.find_refresh_session(
-                db, hash_opaque_token(body.refresh_token), lock=True
+                db, hash_opaque_token(body.refresh_token)
             )
-            if session is not None and session.revoked_at is None:
-                session.revoked_at = datetime.now(timezone.utc)
+            if session is not None:
+                user = await self._repository.get_user(db, session.user_id, lock=True)
+                if user is not None:
+                    await self._repository.revoke_refresh_family(
+                        db, user.id, session.family_id, datetime.now(timezone.utc)
+                    )
         return AuthMessage(message="Signed out")

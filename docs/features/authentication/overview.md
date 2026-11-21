@@ -29,9 +29,9 @@ All routes use `/v1/auth`. JSON is used for requests and responses. Tokens are o
 | `POST /login` | Authenticate an email/password account. Call from sign-in. | `{ "email": "...", "password": "..." }` | Access token, refresh token, bearer type, and `expires_in: 900`. |
 | `POST /google` | Verify the Google ID token supplied by the mobile Google sign-in flow. | `{ "id_token": "..." }` | The same token response as `/login`. |
 | `POST /password-reset/request` | Send a one-time password-reset link. Call from the recovery flow. | `{ "email": "person@example.com" }` | `202` with a generic message. |
-| `POST /password-reset/confirm` | Replace the password using the reset link. | `{ "token": "...", "new_password": "..." }` | `{ "message": "Password reset successfully" }`; existing refresh sessions are revoked. |
+| `POST /password-reset/confirm` | Replace the password using the reset link. | `{ "token": "...", "new_password": "..." }` | `{ "message": "Password reset successfully" }`; all existing access and refresh sessions are revoked immediately. |
 | `POST /refresh` | Rotate a refresh token and issue a fresh access/refresh pair. Call after an access-token expiry. | `{ "refresh_token": "..." }` | New token pair. The submitted refresh token is revoked. |
-| `POST /logout` | Revoke the current refresh token. Call when the user signs out. | `{ "refresh_token": "..." }` | `{ "message": "Signed out" }` |
+| `POST /logout` | Revoke the current access/refresh session family. Call when the user signs out. | `{ "refresh_token": "..." }` | `{ "message": "Signed out" }` |
 | `GET /me` | Load the authenticated user's account summary. Call after sign-in or when restoring a session. | `Authorization: Bearer <access_token>` | `{ "id": "...", "email": "...", "email_verified": true }` |
 
 ### Mobile Integration Notes
@@ -81,3 +81,13 @@ Authentication helper tests cover password hashing, JWT identity/type checks, an
 - [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
 
 Account creation is serialized with transaction-scoped PostgreSQL identity advisory locks, including when no account row exists yet. Email/password registration and Google creation share the normalized email lock; Google also locks its stable subject. Concurrent first sign-ins create one user and one General project.
+
+## Immediate session revocation
+
+Access JWTs contain a `sid` identifying the refresh-token family. Every authenticated request validates that an unexpired, unrevoked refresh record still exists for that user/family. Rotation preserves the family. Logout revokes that family, including access JWTs and rotated descendants, while other device families remain active. Password reset revokes every family for the user.
+
+Reusing a revoked refresh token commits revocation of its entire family before returning `401`; this includes the currently active replacement. Mobile must serialize refresh calls, store the replacement atomically, and sign in again after replay detection rather than retry a consumed refresh token.
+
+Authentication mutations consistently lock the user before action/refresh records. Password verification and session issuance serialize with password reset, preventing a concurrent refresh from surviving reset.
+
+Migration `20261121_01` adds family IDs and retires all legacy refresh tokens. Existing access JWTs without `sid` are rejected; users must sign in again after this security upgrade. No existing migration is edited. Token response bodies and public route paths are unchanged.
