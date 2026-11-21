@@ -213,6 +213,7 @@ class ChatService:
                 if parsed_id in available_ids and parsed_id not in valid_sources:
                     valid_sources.append(parsed_id)
 
+        sources_changed = False
         if valid_sources:
             source_notes = await self._repository.find_completed_notes_for_citations(
                 db, user_id, project_id, valid_sources
@@ -222,11 +223,14 @@ class ChatService:
                 for note in source_notes
                 if note.revision == matching_revisions.get(note.id)
             }
+            sources_changed = any(
+                note_id not in current_source_ids for note_id in valid_sources
+            )
             valid_sources = [
                 note_id for note_id in valid_sources if note_id in current_source_ids
             ]
 
-        supported = answer.supported and bool(valid_sources)
+        supported = answer.supported and bool(valid_sources) and not sources_changed
         answer_content = answer.answer.strip()
         if (answer.supported and not supported) or not answer_content:
             # A generated answer without a valid current citation is not safe to
