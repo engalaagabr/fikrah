@@ -7,13 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.llm.contracts import ChatHistoryMessage, ChatNoteContext
-from app.llm.ports import StructuredTextGenerator
-from app.llm.use_cases import answer_project_question
-from app.models import ChatConversation, ChatMessage, Project
-from app.rag.errors import SearchUnavailableError
-from app.repositories.chat import ChatRepository
-from app.services.contracts.chat import (
+from app.contracts.chat import (
     ConversationCreateCommand,
     ConversationHistory,
     ConversationSummary,
@@ -22,18 +16,18 @@ from app.services.contracts.chat import (
     MessageSubmissionResult,
     SourceReference,
 )
+from app.llm.contracts import ChatHistoryMessage, ChatNoteContext
+from app.llm.ports import StructuredTextGenerator
+from app.llm.use_cases import answer_project_question
+from app.models import ChatConversation, ChatMessage, Project
+from app.rag.errors import SearchUnavailableError
+from app.repositories.chat import ChatRepository
+from app.services.chat_errors import ChatFailure, ChatServiceError
 from app.services.search_errors import SearchProjectNotFound
 from app.services.search_service import SemanticSearchService
 
 CHAT_CONTEXT_LIMIT = 8
 CHAT_HISTORY_LIMIT = 12
-
-
-class ChatServiceError(Exception):
-    def __init__(self, status_code: int, detail: str) -> None:
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
 
 
 class ChatService:
@@ -54,7 +48,7 @@ class ChatService:
             db, user_id, project_id, lock=lock
         )
         if project is None:
-            raise ChatServiceError(404, "Project not found")
+            raise ChatServiceError(ChatFailure.PROJECT_NOT_FOUND, "Project not found")
         return project
 
     async def _owned_conversation(
@@ -69,7 +63,9 @@ class ChatService:
             db, user_id, conversation_id, lock=lock
         )
         if conversation is None:
-            raise ChatServiceError(404, "Conversation not found")
+            raise ChatServiceError(
+                ChatFailure.CONVERSATION_NOT_FOUND, "Conversation not found"
+            )
         return conversation
 
     async def _message_views(
@@ -99,9 +95,7 @@ class ChatService:
         self, db: AsyncSession, user_id: UUID, project_id: UUID
     ) -> list[ConversationSummary]:
         await self._owned_project(db, user_id, project_id)
-        rows = await self._repository.list_conversations(
-            db, user_id, project_id
-        )
+        rows = await self._repository.list_conversations(db, user_id, project_id)
         return [self._conversation_summary(item) for item in rows]
 
     async def create_conversation(
@@ -126,9 +120,7 @@ class ChatService:
         self, db: AsyncSession, user_id: UUID, conversation_id: UUID
     ) -> ConversationHistory:
         conversation = await self._owned_conversation(db, user_id, conversation_id)
-        messages = await self._repository.list_messages(
-            db, conversation.id
-        )
+        messages = await self._repository.list_messages(db, conversation.id)
         return ConversationHistory(
             conversation=self._conversation_summary(conversation),
             messages=tuple(await self._message_views(db, messages)),
@@ -160,10 +152,13 @@ class ChatService:
                 db, user_id, project_id, body.content, CHAT_CONTEXT_LIMIT
             )
         except SearchProjectNotFound as error:
-            raise ChatServiceError(404, "Project not found") from error
+            raise ChatServiceError(
+                ChatFailure.PROJECT_NOT_FOUND, "Project not found"
+            ) from error
         except SearchUnavailableError as error:
             raise ChatServiceError(
-                503, "Project knowledge is temporarily unavailable"
+                ChatFailure.KNOWLEDGE_UNAVAILABLE,
+                "Project knowledge is temporarily unavailable",
             ) from error
 
         note_context = [
@@ -186,7 +181,8 @@ class ChatService:
             )
         except Exception as error:
             raise ChatServiceError(
-                503, "LLM chat is temporarily unavailable"
+                ChatFailure.GENERATION_UNAVAILABLE,
+                "LLM chat is temporarily unavailable",
             ) from error
 
         conversation = await self._owned_conversation(
@@ -198,7 +194,7 @@ class ChatService:
         if latest_message_id != last_message_id:
             await db.rollback()
             raise ChatServiceError(
-                409,
+                ChatFailure.CONVERSATION_CHANGED,
                 "The conversation changed while the answer was being generated. Retry the message.",
             )
 
@@ -213,6 +209,7 @@ class ChatService:
                 if parsed_id in available_ids and parsed_id not in valid_sources:
                     valid_sources.append(parsed_id)
 
+        sources_changed = False
         if valid_sources:
             source_notes = await self._repository.find_completed_notes_for_citations(
                 db, user_id, project_id, valid_sources
@@ -222,11 +219,14 @@ class ChatService:
                 for note in source_notes
                 if note.revision == matching_revisions.get(note.id)
             }
+            sources_changed = any(
+                note_id not in current_source_ids for note_id in valid_sources
+            )
             valid_sources = [
                 note_id for note_id in valid_sources if note_id in current_source_ids
             ]
 
-        supported = answer.supported and bool(valid_sources)
+        supported = answer.supported and bool(valid_sources) and not sources_changed
         answer_content = answer.answer.strip()
         if (answer.supported and not supported) or not answer_content:
             # A generated answer without a valid current citation is not safe to
@@ -243,12 +243,14 @@ class ChatService:
                 )
             except Exception as error:
                 raise ChatServiceError(
-                    503, "LLM chat is temporarily unavailable"
+                    ChatFailure.GENERATION_UNAVAILABLE,
+                    "LLM chat is temporarily unavailable",
                 ) from error
             answer_content = refusal.answer.strip()
             if refusal.supported or not answer_content:
                 raise ChatServiceError(
-                    503, "LLM could not produce a supported chat response"
+                    ChatFailure.INVALID_MODEL_RESPONSE,
+                    "LLM could not produce a supported chat response",
                 )
             # The refusal generation may take time. Reacquire the conversation
             # lock and reject the response if another message arrived meanwhile.
@@ -261,13 +263,14 @@ class ChatService:
             if latest_message_id != last_message_id:
                 await db.rollback()
                 raise ChatServiceError(
-                    409,
+                    ChatFailure.CONVERSATION_CHANGED,
                     "The conversation changed while the answer was being generated. Retry the message.",
                 )
             supported = False
             valid_sources = []
 
         now = datetime.now(timezone.utc)
+        conversation.updated_at = now
         user_message = ChatMessage(
             conversation_id=conversation.id,
             role="user",

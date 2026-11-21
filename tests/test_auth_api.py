@@ -91,6 +91,7 @@ async def test_email_auth_verification_refresh_and_logout(
             "sub": "linked-google-subject",
             "email": email.lower(),
             "email_verified": True,
+            "hd": "example.com",
         },
     )
     linked_google_login = await auth_client.post(
@@ -145,6 +146,57 @@ async def test_email_auth_verification_refresh_and_logout(
 
 
 @pytest.mark.asyncio
+async def test_google_link_discards_unverified_local_password(
+    auth_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    delivered: list[str] = []
+
+    async def capture_email(email: str, token: str, purpose: str) -> None:
+        delivered.append(token)
+
+    async def capture_welcome(email: str) -> None:
+        pass
+
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.send_action_email", capture_email
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.send_welcome_email", capture_welcome
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.verify_google_id_token",
+        lambda *_: {
+            "sub": "actual-mailbox-owner",
+            "email": "pre-registered@gmail.com",
+            "email_verified": True,
+            "hd": "example.com",
+        },
+    )
+    credentials = {
+        "email": "pre-registered@gmail.com",
+        "password": "a password chosen by somebody else",
+    }
+    assert (await auth_client.post("/v1/auth/register", json=credentials)).status_code == 202
+    assert (await auth_client.post("/v1/auth/login", json=credentials)).status_code == 403
+
+    linked = await auth_client.post(
+        "/v1/auth/google", json={"id_token": "verified-google-token-for-the-owner"}
+    )
+    assert linked.status_code == 200
+    assert (await auth_client.post("/v1/auth/login", json=credentials)).status_code == 401
+    assert (
+        await auth_client.post("/v1/auth/verify-email", json={"token": delivered[0]})
+    ).status_code == 400
+    assert (
+        await auth_client.get(
+            "/v1/auth/me",
+            headers={"Authorization": f"Bearer {linked.json()['access_token']}"},
+        )
+    ).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
     auth_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -157,6 +209,7 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
             "sub": "google-user-1",
             "email": "google.user@example.com",
             "email_verified": True,
+            "hd": "example.com",
         }
 
     monkeypatch.setattr(
@@ -233,6 +286,10 @@ async def test_password_reset_revokes_existing_refresh_sessions(
         json={"token": delivered[-1][1], "new_password": new_password},
     )
     assert confirmed.status_code == 200
+    old_access = await auth_client.get(
+        "/v1/auth/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
+    )
+    assert old_access.status_code == 401
     old_session_refresh = await auth_client.post(
         "/v1/auth/refresh", json={"refresh_token": old_refresh_token}
     )
@@ -288,3 +345,106 @@ async def test_resend_verification_replaces_previous_link(
     )
     assert old_link.status_code == 400
     assert new_link.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_google_external_email_cannot_create_account(auth_client, monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.verify_google_id_token",
+        lambda *_: {
+            "sub": "untrusted-external-subject", "email": "outside@example.com",
+            "email_verified": True,
+        },
+    )
+    response = await auth_client.post(
+        "/v1/auth/google", json={"id_token": "google-token-with-non-authoritative-email"}
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_previously_linked_subject_can_sign_in_without_email_authority(
+    auth_client, monkeypatch
+):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
+    claims = {
+        "sub": "previously-linked", "email": "linked@example.com",
+        "email_verified": True, "hd": "example.com",
+    }
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.verify_google_id_token",
+        lambda *_: dict(claims),
+    )
+    async def welcome(_):
+        pass
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_welcome_email", welcome)
+    first = await auth_client.post(
+        "/v1/auth/google", json={"id_token": "google-token-for-the-linked-account"}
+    )
+    assert first.status_code == 200
+    claims.pop("hd")
+    second = await auth_client.post(
+        "/v1/auth/google", json={"id_token": "google-token-for-the-linked-account"}
+    )
+    assert second.status_code == 200
+
+
+async def _verified_test_account(client, monkeypatch):
+    delivered = []
+
+    async def send(email, token, purpose):
+        delivered.append(token)
+
+    async def welcome(email):
+        pass
+
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_action_email", send)
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_welcome_email", welcome)
+    credentials = {"email": "session-owner@example.com", "password": "secure session test passphrase"}
+    assert (await client.post("/v1/auth/register", json=credentials)).status_code == 202
+    assert (await client.post("/v1/auth/verify-email", json={"token": delivered[0]})).status_code == 200
+    return credentials
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_access_only_for_its_session_family(auth_client, monkeypatch):
+    credentials = await _verified_test_account(auth_client, monkeypatch)
+    first = (await auth_client.post("/v1/auth/login", json=credentials)).json()
+    other = (await auth_client.post("/v1/auth/login", json=credentials)).json()
+    rotated = (await auth_client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})).json()
+    # Rotation keeps the family alive, including its unexpired access tokens.
+    assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {first['access_token']}"})).status_code == 200
+    assert (await auth_client.post("/v1/auth/logout", json={"refresh_token": rotated["refresh_token"]})).status_code == 200
+    for tokens in (first, rotated):
+        assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"})).status_code == 401
+    assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {other['access_token']}"})).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_refresh_replay_commits_revocation_of_active_replacement(auth_client, monkeypatch):
+    credentials = await _verified_test_account(auth_client, monkeypatch)
+    first = (await auth_client.post("/v1/auth/login", json=credentials)).json()
+    replacement = (await auth_client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})).json()
+    assert (await auth_client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})).status_code == 401
+    assert (await auth_client.post("/v1/auth/refresh", json={"refresh_token": replacement["refresh_token"]})).status_code == 401
+    assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {replacement['access_token']}"})).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_budget_blocks_before_password_verification(auth_client, monkeypatch):
+    from app.infrastructure.container import request_budgets
+    from app.services.request_budgets import RequestBudgetExceeded
+
+    counts = {}
+    async def consume(key, limit, window):
+        counts[key] = counts.get(key, 0) + 1
+        if counts[key] > limit:
+            raise RequestBudgetExceeded(60)
+
+    monkeypatch.setattr(request_budgets._store, "consume", consume)
+    for _ in range(5):
+        assert (await auth_client.post("/v1/auth/login", json={"email": "unknown@example.com", "password": "a wrong password for budget test"})).status_code == 401
+    blocked = await auth_client.post("/v1/auth/login", json={"email": "unknown@example.com", "password": "a wrong password for budget test"})
+    assert blocked.status_code == 429
+    assert blocked.headers["retry-after"] == "60"

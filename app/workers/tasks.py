@@ -1,11 +1,10 @@
 """Celery tasks for note processing and Qdrant cleanup."""
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from celery import Task
-
-from app.infrastructure.persistence.worker_notes import WorkerNoteProcessingRepository
+from app.infrastructure.email.worker import deliver_pending_account_emails
 from app.infrastructure.persistence.worker_outbox import WorkerOutboxRepository
 from app.infrastructure.worker_container import create_note_processing_service
 from app.rag.vector_store import QdrantNoteVectorStore
@@ -15,24 +14,13 @@ _STALE_DISPATCH_AFTER = timedelta(seconds=settings.stale_dispatch_after_seconds)
 _STALE_PROCESSING_AFTER = timedelta(seconds=settings.stale_processing_after_seconds)
 
 
-class NoteProcessingTask(Task):
-    """Persist terminal failure after Celery exhausts configured retries."""
-
-    def on_failure(self, exc, task_id, args, kwargs, einfo) -> None:
-        if not args:
-            return
-        repository = None
-        try:
-            repository = WorkerNoteProcessingRepository()
-            repository.mark_failed(UUID(args[0]))
-        finally:
-            if repository is not None:
-                repository.close()
+@celery_app.task(name="app.workers.tasks.deliver_account_emails", acks_late=True)
+def deliver_account_emails() -> None:
+    asyncio.run(deliver_pending_account_emails())
 
 
 @celery_app.task(
     bind=True,
-    base=NoteProcessingTask,
     name="app.worker.tasks.process_note_job",
     acks_late=True,
     autoretry_for=(Exception,),
@@ -43,7 +31,11 @@ class NoteProcessingTask(Task):
 def process_note_job(self, job_id: str) -> None:
     service, repository = create_note_processing_service(_STALE_PROCESSING_AFTER)
     try:
-        service.process(UUID(job_id), self.request.id)
+        service.process(
+            UUID(job_id),
+            self.request.id,
+            terminal_on_error=self.request.retries >= settings.max_retries,
+        )
     finally:
         repository.close()
 

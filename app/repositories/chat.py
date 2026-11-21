@@ -143,6 +143,7 @@ class ChatRepository:
                 Note.project_id == project_id,
                 Note.processing_status == "completed",
             )
+            .order_by(Note.id)
             .with_for_update()
         )
         return list(notes)

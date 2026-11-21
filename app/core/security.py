@@ -1,8 +1,12 @@
 """Password, email-token, and access-token helpers."""
 
+import asyncio
 import hashlib
 import secrets
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from threading import BoundedSemaphore
 from uuid import UUID
 
 import jwt
@@ -15,6 +19,40 @@ DUMMY_PASSWORD_HASH = password_hasher.hash("FIKRAH non-user password timing valu
 JWT_ISSUER = "fikrah-api"
 ACCESS_TOKEN_TTL = timedelta(minutes=15)
 REFRESH_TOKEN_TTL = timedelta(days=30)
+_PUBLIC_JWT_PLACEHOLDERS = {
+    "replace-with-a-random-secret-at-least-32-characters",
+}
+_PASSWORD_SLOTS = BoundedSemaphore(4)
+
+
+class PasswordWorkBusy(Exception):
+    pass
+
+
+async def run_password_work(operation: Callable, *args):
+    if not _PASSWORD_SLOTS.acquire(blocking=False):
+        raise PasswordWorkBusy
+
+    def work():
+        try:
+            return operation(*args)
+        finally:
+            _PASSWORD_SLOTS.release()
+
+    try:
+        future = asyncio.get_running_loop().run_in_executor(None, work)
+    except BaseException:
+        _PASSWORD_SLOTS.release()
+        raise
+    return await asyncio.shield(future)
+
+
+def validate_jwt_secret(secret: str) -> str:
+    if len(secret) < 32:
+        raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
+    if secret.strip().lower() in _PUBLIC_JWT_PLACEHOLDERS:
+        raise RuntimeError("FIKRAH_JWT_SECRET must not use a public example value")
+    return secret
 
 
 def hash_password(password: str) -> str:
@@ -33,14 +71,19 @@ def new_opaque_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def create_access_token(user_id: UUID) -> str:
-    secret = get_settings().fikrah_jwt_secret
-    if len(secret) < 32:
-        raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
+@dataclass(frozen=True, slots=True)
+class AccessIdentity:
+    user_id: UUID
+    family_id: UUID
+
+
+def create_access_token(user_id: UUID, family_id: UUID) -> str:
+    secret = validate_jwt_secret(get_settings().fikrah_jwt_secret)
     now = datetime.now(timezone.utc)
     return jwt.encode(
         {
             "sub": str(user_id),
+            "sid": str(family_id),
             "type": "access",
             "iat": now,
             "exp": now + ACCESS_TOKEN_TTL,
@@ -51,11 +94,15 @@ def create_access_token(user_id: UUID) -> str:
     )
 
 
-def decode_access_token(token: str) -> UUID:
-    secret = get_settings().fikrah_jwt_secret
-    if len(secret) < 32:
-        raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
-    payload = jwt.decode(token, secret, algorithms=["HS256"], issuer=JWT_ISSUER)
+def decode_access_token(token: str) -> AccessIdentity:
+    secret = validate_jwt_secret(get_settings().fikrah_jwt_secret)
+    payload = jwt.decode(
+        token,
+        secret,
+        algorithms=["HS256"],
+        issuer=JWT_ISSUER,
+        options={"require": ["sub", "sid", "type", "iat", "exp", "iss"]},
+    )
     if payload.get("type") != "access":
         raise jwt.InvalidTokenError("Wrong token type")
-    return UUID(payload["sub"])
+    return AccessIdentity(UUID(payload["sub"]), UUID(payload["sid"]))

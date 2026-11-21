@@ -6,7 +6,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app.api.deps import AuthenticatedUser, ChatServiceDependency, Db
+from app.api.deps import AuthenticatedUser, ChatServiceDependency, Db, LLMRequestBudget
+from app.contracts.chat import (
+    ConversationCreateCommand,
+    ConversationSummary,
+    MessageCreateCommand,
+    MessageRecord,
+    SourceReference,
+)
 from app.schemas.chat import (
     ConversationCreate,
     ConversationDetail,
@@ -16,17 +23,19 @@ from app.schemas.chat import (
     MessageView,
     SourceView,
 )
-from app.services.chat_service import ChatServiceError
-from app.services.contracts.chat import (
-    ConversationCreateCommand,
-    ConversationSummary,
-    MessageCreateCommand,
-    MessageRecord,
-    SourceReference,
-)
+from app.services.chat_errors import ChatFailure, ChatServiceError
 
 router = APIRouter(tags=["chat"])
 T = TypeVar("T")
+
+CHAT_FAILURE_STATUSES = {
+    ChatFailure.PROJECT_NOT_FOUND: 404,
+    ChatFailure.CONVERSATION_NOT_FOUND: 404,
+    ChatFailure.KNOWLEDGE_UNAVAILABLE: 503,
+    ChatFailure.GENERATION_UNAVAILABLE: 503,
+    ChatFailure.CONVERSATION_CHANGED: 409,
+    ChatFailure.INVALID_MODEL_RESPONSE: 503,
+}
 
 
 @router.get(
@@ -38,9 +47,7 @@ async def list_conversations(
     db: Db,
     service: ChatServiceDependency,
 ) -> list[ConversationView]:
-    conversations = await _execute(
-        service.list_conversations(db, user.id, project_id)
-    )
+    conversations = await _execute(service.list_conversations(db, user.id, project_id))
     return [_conversation_view(item) for item in conversations]
 
 
@@ -92,6 +99,7 @@ async def send_message(
     body: MessageCreate,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: ChatServiceDependency,
 ) -> MessageSubmission:
     submission = await _execute(
@@ -127,7 +135,7 @@ async def _execute(call: Awaitable[T]) -> T:
         return await call
     except ChatServiceError as error:
         raise HTTPException(
-            status_code=error.status_code, detail=error.detail
+            status_code=CHAT_FAILURE_STATUSES[error.code], detail=error.detail
         ) from error
 
 

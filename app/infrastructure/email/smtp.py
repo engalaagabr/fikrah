@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import aiosmtplib
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader, TemplateError, select_autoescape
 
 from app.core.config import get_settings
 from app.services.auth_ports import EmailDeliveryError
@@ -47,8 +47,7 @@ def _smtp_settings() -> dict[str, object]:
         "username": username,
         "password": password,
         "use_tls": use_tls,
-        "start_tls": not use_tls
-        and settings.smtp_start_tls.lower() == "true",
+        "start_tls": not use_tls and settings.smtp_start_tls.lower() == "true",
     }
 
 
@@ -88,7 +87,13 @@ async def send_action_email(recipient: str, token: str, purpose: str) -> None:
         template = EMAIL_TEMPLATES.get_template(email_action["template"])
         message.add_alternative(template.render(action_url=action_url), subtype="html")
         await _send(message)
-    except (RuntimeError, OSError, ValueError, aiosmtplib.SMTPException) as error:
+    except (
+        RuntimeError,
+        OSError,
+        ValueError,
+        TemplateError,
+        aiosmtplib.SMTPException,
+    ) as error:
         raise EmailDeliveryError from error
 
 
@@ -105,5 +110,11 @@ async def send_welcome_email(recipient: str) -> None:
         template = EMAIL_TEMPLATES.get_template("welcome.html")
         message.add_alternative(template.render(), subtype="html")
         await _send(message)
-    except (RuntimeError, OSError, ValueError, aiosmtplib.SMTPException) as error:
+    except (
+        RuntimeError,
+        OSError,
+        ValueError,
+        TemplateError,
+        aiosmtplib.SMTPException,
+    ) as error:
         raise EmailDeliveryError from error

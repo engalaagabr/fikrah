@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.locks import lock_project_processing
 from app.models import (
     ChatMessageSource,
     Note,
@@ -17,6 +18,9 @@ from app.models import (
 
 
 class NoteRepository:
+    async def lock_project_processing(self, db: AsyncSession, project_id: UUID) -> None:
+        await lock_project_processing(db, project_id)
+
     async def refresh_note(self, db: AsyncSession, note: Note) -> None:
         await db.refresh(note)
 

@@ -10,6 +10,22 @@ from app.models import EmailActionToken, EmailSendAttempt, Project, RefreshSessi
 
 
 class AuthRepository:
+    async def lock_account_creation(
+        self, db: AsyncSession, email: str, google_subject: str | None = None
+    ) -> None:
+        if db.get_bind().dialect.name != "postgresql":
+            return
+        identities = {f"email:{email}"}
+        if google_subject is not None:
+            identities.add(f"google:{google_subject}")
+        for identity in sorted(identities):
+            await db.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(:identity, 74192039))"
+                ),
+                {"identity": identity},
+            )
+
     async def add_user(self, db: AsyncSession, user: User) -> None:
         db.add(user)
         await db.flush()
@@ -17,12 +33,12 @@ class AuthRepository:
     def add_project(self, db: AsyncSession, project: Project) -> None:
         db.add(project)
 
-    async def lock_email_send_attempts(
-        self, db: AsyncSession, email: str
-    ) -> None:
+    async def lock_email_send_attempts(self, db: AsyncSession, email: str) -> None:
         if db.get_bind().dialect.name == "postgresql":
             await db.execute(
-                text("SELECT pg_advisory_xact_lock(hashtextextended(:email, 74192038))"),
+                text(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(:email, 74192038))"
+                ),
                 {"email": email},
             )
 
@@ -73,29 +89,27 @@ class AuthRepository:
         db.add(action_token)
         await db.flush()
 
-    async def find_user_id_by_email(
-        self, db: AsyncSession, email: str
-    ) -> UUID | None:
+    async def find_user_id_by_email(self, db: AsyncSession, email: str) -> UUID | None:
         return await db.scalar(select(User.id).where(User.email == email))
 
     async def find_action_token(
-        self, db: AsyncSession, token_hash: str, purpose: str
+        self, db: AsyncSession, token_hash: str, purpose: str, *, lock: bool = True
     ) -> EmailActionToken | None:
-        return await db.scalar(
-            select(EmailActionToken)
-            .where(
-                EmailActionToken.token_hash == token_hash,
-                EmailActionToken.purpose == purpose,
-            )
-            .with_for_update()
+        query = select(EmailActionToken)
+        query = query.where(
+            EmailActionToken.token_hash == token_hash,
+            EmailActionToken.purpose == purpose,
         )
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        return await db.scalar(query)
 
     async def find_user_by_email(
         self, db: AsyncSession, email: str, *, lock: bool = False
     ) -> User | None:
         query = select(User).where(User.email == email)
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update().execution_options(populate_existing=True)
         return await db.scalar(query)
 
     async def find_user_by_google_subject(
@@ -105,8 +119,42 @@ class AuthRepository:
             select(User).where(User.google_subject == subject).with_for_update()
         )
 
-    async def get_user(self, db: AsyncSession, user_id: UUID) -> User | None:
-        return await db.get(User, user_id)
+    async def get_user(
+        self, db: AsyncSession, user_id: UUID, *, lock: bool = False
+    ) -> User | None:
+        query = select(User).where(User.id == user_id)
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        return await db.scalar(query)
+
+    async def active_session_user(
+        self, db: AsyncSession, user_id: UUID, family_id: UUID, now: datetime
+    ) -> User | None:
+        return await db.scalar(
+            select(User)
+            .join(RefreshSession, RefreshSession.user_id == User.id)
+            .where(
+                User.id == user_id,
+                User.email_verified_at.is_not(None),
+                RefreshSession.family_id == family_id,
+                RefreshSession.revoked_at.is_(None),
+                RefreshSession.expires_at > now,
+            )
+            .limit(1)
+        )
+
+    async def revoke_refresh_family(
+        self, db: AsyncSession, user_id: UUID, family_id: UUID, now: datetime
+    ) -> None:
+        await db.execute(
+            update(RefreshSession)
+            .where(
+                RefreshSession.user_id == user_id,
+                RefreshSession.family_id == family_id,
+                RefreshSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
 
     async def add_refresh_session(
         self, db: AsyncSession, refresh_session: RefreshSession
@@ -117,11 +165,9 @@ class AuthRepository:
     async def find_refresh_session(
         self, db: AsyncSession, token_hash: str, *, lock: bool = False
     ) -> RefreshSession | None:
-        query = select(RefreshSession).where(
-            RefreshSession.token_hash == token_hash
-        )
+        query = select(RefreshSession).where(RefreshSession.token_hash == token_hash)
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update().execution_options(populate_existing=True)
         return await db.scalar(query)
 
     async def revoke_active_refresh_sessions(

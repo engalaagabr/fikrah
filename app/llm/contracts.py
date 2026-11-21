@@ -1,12 +1,19 @@
 """Validated input and output contracts shared across LLM use cases and adapters."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.content_limits import validate_note_size
 
 
 class NoteAnalysis(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     refinement_proposal: str = Field(min_length=1)
     concepts: list[str] = Field(max_length=8)
+
+    @field_validator("refinement_proposal")
+    @classmethod
+    def bound_refinement(cls, value: str) -> str:
+        return validate_note_size(value)
 
 
 class ChatNoteContext(BaseModel):

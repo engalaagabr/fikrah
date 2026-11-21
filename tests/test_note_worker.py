@@ -381,3 +381,70 @@ def test_vector_cleanup_worker_removes_qdrant_point_and_marks_request_complete(
         request = session.get(VectorCleanupRequest, cleanup_id)
         assert request is not None and request.completed_at is not None
     engine.dispose()
+
+
+def test_reclaimed_attempt_cannot_overwrite_or_fail_successful_result(note_job_db):
+    from datetime import timedelta
+
+    from app.infrastructure.persistence.worker_notes import (
+        WorkerNoteProcessingRepository,
+    )
+
+    database_path, job_id, note_id = note_job_db
+    repository = WorkerNoteProcessingRepository()
+    try:
+        first = repository.claim(
+            job_id, "first-attempt", datetime.now(timezone.utc) - timedelta(minutes=15)
+        )
+        assert first is not None
+        # Force lease expiry without waiting; the second claim replaces its owner.
+        second = repository.claim(
+            job_id, "second-attempt", datetime.now(timezone.utc) + timedelta(seconds=1)
+        )
+        assert second is not None
+        assert not repository.fail_if_current(first, terminal=True)
+        newer = NoteAnalysis(title="New", refinement_proposal="New result", concepts=[])
+        older = NoteAnalysis(title="Old", refinement_proposal="Old result", concepts=[])
+        assert repository.complete_if_current(second, newer, lambda: None)
+        vector_writes = []
+        assert not repository.complete_if_current(
+            first, older, lambda: vector_writes.append("old")
+        )
+        assert not repository.fail_if_current(first, terminal=True)
+        assert not repository.fail_if_current(second, terminal=True)
+        assert vector_writes == []
+        engine = create_engine(f"sqlite:///{database_path}")
+        with Session(engine) as session:
+            note = session.get(Note, note_id)
+            assert note.processing_status == "completed"
+            assert note.refinement_proposal == "New result"
+        engine.dispose()
+    finally:
+        repository.close()
+
+
+def test_retry_releases_only_its_own_attempt(note_job_db):
+    from datetime import timedelta
+
+    from app.infrastructure.persistence.worker_notes import (
+        WorkerNoteProcessingRepository,
+    )
+
+    database_path, job_id, note_id = note_job_db
+    repository = WorkerNoteProcessingRepository()
+    try:
+        now = datetime.now(timezone.utc)
+        first = repository.claim(job_id, "attempt-one", now - timedelta(minutes=15))
+        assert first is not None
+        assert repository.claim(job_id, "attempt-two", now - timedelta(minutes=15)) is None
+        assert repository.fail_if_current(first, terminal=False)
+        second = repository.claim(job_id, "attempt-two", now - timedelta(minutes=15))
+        assert second is not None
+        assert not repository.fail_if_current(first, terminal=True)
+        assert repository.fail_if_current(second, terminal=True)
+        engine = create_engine(f"sqlite:///{database_path}")
+        with Session(engine) as session:
+            assert session.get(Note, note_id).processing_status == "failed"
+        engine.dispose()
+    finally:
+        repository.close()

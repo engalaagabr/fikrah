@@ -6,10 +6,10 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.search import SearchMatch
 from app.llm.ports import EmbeddingModel
 from app.rag.errors import SearchUnavailableError
 from app.repositories.search import SearchRepository
-from app.services.contracts.search import SearchMatch
 
 
 async def retrieve_current_notes(

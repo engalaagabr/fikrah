@@ -8,12 +8,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db_session
 from app.infrastructure import container as service_container
 from app.main import app as fastapi_app
 from app.models import Note, Project, User
+from tests.auth_helpers import seed_access_token
 
 
 @pytest_asyncio.fixture
@@ -110,7 +110,7 @@ async def search_api(
             stale_id,
             queued_id,
             private_id,
-            create_access_token(owner_id),
+            await seed_access_token(sessions, owner_id),
         )
     fastapi_app.dependency_overrides.clear()
     await engine.dispose()
@@ -212,3 +212,24 @@ async def test_search_rejects_blank_queries(search_api) -> None:
         json={"query": "   "},
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_releases_database_transactions_during_provider_calls(search_api):
+    from app.services.search_service import SemanticSearchService
+
+    _, sessions, owner_id, _, project_id, note_id, *_ = search_api
+    async with sessions() as db:
+        class Embeddings:
+            def embed_query(self, query):
+                assert not db.in_transaction()
+                return [0.1, 0.2]
+
+        def vectors(*_):
+            assert not db.in_transaction()
+            return [(note_id, 2, 0.9)]
+
+        service = SemanticSearchService(lambda: Embeddings(), vectors)
+        matches = await service.retrieve(db, owner_id, project_id, "A question", 10)
+        assert matches[0].note_id == note_id
+        assert not db.in_transaction()

@@ -6,6 +6,16 @@ from typing import TypeVar
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import AuthenticatedUser, AuthServiceDependency, Db
+from app.contracts.auth import (
+    ActionToken,
+    AuthMessage,
+    AuthTokenPair,
+    EmailAddress,
+    EmailPassword,
+    GoogleIdentityToken,
+    PasswordReset,
+    RefreshToken,
+)
 from app.schemas.auth import (
     AuthTokens,
     Credentials,
@@ -17,30 +27,39 @@ from app.schemas.auth import (
     TokenRequest,
     UserView,
 )
-from app.services.auth_errors import AuthServiceError
-from app.services.contracts.auth import (
-    ActionToken,
-    AuthMessage,
-    AuthTokenPair,
-    EmailAddress,
-    EmailPassword,
-    GoogleIdentityToken,
-    PasswordReset,
-    RefreshToken,
-)
+from app.services.auth_errors import AuthFailure, AuthServiceError
 
 router = APIRouter(prefix="/v1/auth", tags=["authentication"])
 Result = TypeVar("Result")
+
+AUTH_FAILURE_STATUSES = {
+    AuthFailure.INVALID_ACCESS_TOKEN: 401,
+    AuthFailure.INVALID_ACTION_TOKEN: 400,
+    AuthFailure.INVALID_CREDENTIALS: 401,
+    AuthFailure.EMAIL_NOT_VERIFIED: 403,
+    AuthFailure.INVALID_GOOGLE_IDENTITY: 401,
+    AuthFailure.GOOGLE_IDENTITY_CONFLICT: 409,
+    AuthFailure.GOOGLE_UNAVAILABLE: 503,
+    AuthFailure.INVALID_REFRESH_TOKEN: 401,
+    AuthFailure.LOGIN_BUDGET_EXCEEDED: 429,
+    AuthFailure.LOGIN_BUDGET_UNAVAILABLE: 503,
+    AuthFailure.PASSWORD_BUSY: 429,
+}
 
 
 async def _execute(workflow: Awaitable[Result]) -> Result:
     try:
         return await workflow
     except AuthServiceError as error:
+        headers = None
+        if error.code == AuthFailure.INVALID_CREDENTIALS:
+            headers = {"WWW-Authenticate": "Bearer"}
+        elif error.retry_after is not None:
+            headers = {"Retry-After": str(error.retry_after)}
         raise HTTPException(
-            status_code=error.status_code,
+            status_code=AUTH_FAILURE_STATUSES[error.code],
             detail=error.message,
-            headers=error.headers,
+            headers=headers,
         ) from error
 
 
@@ -93,9 +112,7 @@ async def login(
     body: Credentials, db: Db, service: AuthServiceDependency
 ) -> AuthTokens:
     return await _tokens(
-        service.login(
-            EmailPassword(email=str(body.email), password=body.password), db
-        )
+        service.login(EmailPassword(email=str(body.email), password=body.password), db)
     )
 
 

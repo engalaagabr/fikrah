@@ -5,8 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.api.deps import AuthenticatedUser, Db, ProjectServiceDependency
+from app.contracts.projects import ProjectResult
 from app.schemas.projects import ProjectInput, ProjectView
-from app.services.contracts.projects import ProjectResult
 from app.services.projects_service import (
     GeneralProjectProtected,
     ProjectNotFound,

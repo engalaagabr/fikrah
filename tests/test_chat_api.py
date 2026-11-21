@@ -10,7 +10,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db_session
 from app.infrastructure import container as service_container
@@ -24,6 +23,7 @@ from app.models import (
     Project,
     User,
 )
+from tests.auth_helpers import seed_access_token
 
 
 @pytest_asyncio.fixture
@@ -101,8 +101,8 @@ async def chat_api(
             other_project_id,
             note_id,
             private_note_id,
-            create_access_token(owner_id),
-            create_access_token(other.id),
+            await seed_access_token(sessions, owner_id),
+            await seed_access_token(sessions, other.id),
         )
     fastapi_app.dependency_overrides.clear()
     await engine.dispose()
@@ -559,3 +559,71 @@ async def test_deleting_project_removes_its_conversations(chat_api) -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert detail.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_chat_rejects_answer_when_only_some_cited_notes_are_still_current(
+    chat_api, monkeypatch
+):
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    client, _, _, project_id, _, note_id, _, token, _ = chat_api
+    removed_id = uuid4()
+    async def retrieve(*_):
+        return [
+            SimpleNamespace(note_id=note_id, title="Valid", content="A", revision=2),
+            SimpleNamespace(note_id=removed_id, title="Removed", content="B", revision=1),
+        ]
+
+    async def validate(*_):
+        return [SimpleNamespace(id=note_id, revision=2)]
+
+    calls = []
+    class Generator:
+        def generate_structured(self, **kwargs):
+            notes = json.loads(kwargs["user_content"])["project_notes"]
+            calls.append(notes)
+            if notes:
+                return ChatAnswer(answer="A and removed B", supported=True, source_note_ids=[str(note_id), str(removed_id)])
+            return ChatAnswer(answer="No current evidence supports this answer.", supported=False)
+
+    monkeypatch.setattr(service_container.search_service, "retrieve", retrieve)
+    monkeypatch.setattr(service_container.chat_service._repository, "find_completed_notes_for_citations", validate)
+    monkeypatch.setattr(service_container.chat_service, "_text_generator_factory", Generator)
+    headers = {"Authorization": f"Bearer {token}"}
+    created = await client.post(f"/v1/projects/{project_id}/conversations", headers=headers, json={})
+    response = await client.post(f"/v1/conversations/{created.json()['id']}/messages", headers=headers, json={"content": "What is A and B?"})
+    assert response.status_code == 200
+    assistant = response.json()["assistant_message"]
+    assert assistant["supported"] is False
+    assert assistant["sources"] == []
+    assert "removed B" not in assistant["content"]
+    assert len(calls) == 2
+    assert calls[1] == []
+
+
+@pytest.mark.asyncio
+async def test_new_message_updates_named_conversation_activity(chat_api, monkeypatch):
+    from datetime import datetime
+
+    client, sessions, _, project_id, _, _, _, token, _ = chat_api
+    async def no_matches(*_):
+        return []
+
+    class Generator:
+        def generate_structured(self, **kwargs):
+            return ChatAnswer(answer="No supported answer.", supported=False)
+
+    monkeypatch.setattr(service_container.search_service, "retrieve", no_matches)
+    monkeypatch.setattr(service_container.chat_service, "_text_generator_factory", Generator)
+    headers = {"Authorization": f"Bearer {token}"}
+    created = await client.post(f"/v1/projects/{project_id}/conversations", headers=headers, json={"title": "Named conversation"})
+    conversation_id = UUID(created.json()["id"])
+    async with sessions() as db:
+        conversation = await db.get(ChatConversation, conversation_id)
+        conversation.updated_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        await db.commit()
+    response = await client.post(f"/v1/conversations/{conversation_id}/messages", headers=headers, json={"content": "A new question"})
+    assert response.status_code == 200
+    assert response.json()["conversation"]["updated_at"] > "2020-01-01"

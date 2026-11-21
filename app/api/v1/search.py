@@ -4,10 +4,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
-from app.api.deps import AuthenticatedUser, Db, SearchServiceDependency
+from app.api.deps import (
+    AuthenticatedUser,
+    Db,
+    LLMRequestBudget,
+    SearchServiceDependency,
+)
+from app.contracts.search import SearchMatch
 from app.rag.errors import SearchUnavailableError
 from app.schemas.search import SearchRequest, SearchResult
-from app.services.contracts.search import SearchMatch
 from app.services.search_errors import SearchProjectNotFound
 
 router = APIRouter(tags=["search"])
@@ -19,6 +24,7 @@ async def search_project_notes(
     body: SearchRequest,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: SearchServiceDependency,
 ) -> list[SearchResult]:
     try:

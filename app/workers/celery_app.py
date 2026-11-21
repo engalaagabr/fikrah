@@ -25,6 +25,10 @@ celery_app.conf.update(
     },
     worker_prefetch_multiplier=1,
     beat_schedule={
+        "deliver-durable-account-emails": {
+            "task": "app.workers.tasks.deliver_account_emails",
+            "schedule": float(settings.dispatch_interval_seconds),
+        },
         "dispatch-durable-backend-jobs": {
             "task": "app.worker.tasks.dispatch_pending_work",
             "schedule": float(settings.dispatch_interval_seconds),

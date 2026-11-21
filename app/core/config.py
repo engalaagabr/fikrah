@@ -18,6 +18,18 @@ class Settings(BaseSettings):
     redis_url: str = Field(
         default="redis://localhost:6379/0", validation_alias="REDIS_URL"
     )
+    fikrah_login_limit_per_minute: int = Field(
+        default=5, ge=1, validation_alias="FIKRAH_LOGIN_LIMIT_PER_MINUTE"
+    )
+    fikrah_llm_limit_per_minute: int = Field(
+        default=10, ge=1, validation_alias="FIKRAH_LLM_LIMIT_PER_MINUTE"
+    )
+    fikrah_note_max_characters: int = Field(
+        default=100_000, ge=1, validation_alias="FIKRAH_NOTE_MAX_CHARACTERS"
+    )
+    fikrah_request_max_bytes: int = Field(
+        default=416_384, ge=1, validation_alias="FIKRAH_REQUEST_MAX_BYTES"
+    )
 
     fikrah_celery_max_retries: str = Field(
         default="3", validation_alias="FIKRAH_CELERY_MAX_RETRIES"

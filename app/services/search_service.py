@@ -5,10 +5,10 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.search import SearchMatch
 from app.llm.ports import EmbeddingModel
 from app.rag.retriever import retrieve_current_notes
 from app.repositories.search import SearchRepository
-from app.services.contracts.search import SearchMatch
 from app.services.search_errors import SearchProjectNotFound
 
 
@@ -36,14 +36,19 @@ class SemanticSearchService:
         project = await self._repository.find_owned_project(db, user_id, project_id)
         if project is None:
             raise SearchProjectNotFound
-
-        return await retrieve_current_notes(
-            db,
-            user_id,
-            project_id,
-            query,
-            limit,
-            embedding_model_factory=self._embedding_model_factory,
-            vector_search=self._vector_search,
-            repository=self._repository,
-        )
+        # Ownership is checked before external work; release the read transaction
+        # while providers run, then validate their candidates in a fresh read.
+        await db.rollback()
+        try:
+            return await retrieve_current_notes(
+                db,
+                user_id,
+                project_id,
+                query,
+                limit,
+                embedding_model_factory=self._embedding_model_factory,
+                vector_search=self._vector_search,
+                repository=self._repository,
+            )
+        finally:
+            await db.rollback()

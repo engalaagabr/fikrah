@@ -6,7 +6,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
 
-from app.api.deps import AuthenticatedUser, Db, NoteServiceDependency
+from app.api.deps import AuthenticatedUser, Db, LLMRequestBudget, NoteServiceDependency
+from app.contracts.note_results import NoteResult
+from app.contracts.notes import (
+    NoteCreateCommand,
+    NoteUpdateCommand,
+    ProposalActionCommand,
+    ProposalUpdateCommand,
+)
 from app.schemas.notes import (
     NoteCreate,
     NoteUpdate,
@@ -14,17 +21,21 @@ from app.schemas.notes import (
     ProposalAction,
     ProposalUpdate,
 )
-from app.services.contracts.note_results import NoteResult
-from app.services.contracts.notes import (
-    NoteCreateCommand,
-    NoteUpdateCommand,
-    ProposalActionCommand,
-    ProposalUpdateCommand,
-)
-from app.services.notes_service import NoteServiceError
+from app.services.note_errors import NoteFailure, NoteServiceError
 
 router = APIRouter(tags=["notes"])
 T = TypeVar("T")
+
+NOTE_FAILURE_STATUSES = {
+    NoteFailure.NOTE_NOT_FOUND: 404,
+    NoteFailure.PROJECT_NOT_FOUND: 404,
+    NoteFailure.IDEMPOTENCY_CONFLICT: 409,
+    NoteFailure.NOTE_DELETED: 410,
+    NoteFailure.EMPTY_CONTENT: 422,
+    NoteFailure.STALE_PROCESSING_RESULT: 409,
+    NoteFailure.PROCESSING_INCOMPLETE: 409,
+    NoteFailure.PROPOSAL_UNAVAILABLE: 409,
+}
 
 
 async def _execute(call: Awaitable[T]) -> T:
@@ -32,7 +43,7 @@ async def _execute(call: Awaitable[T]) -> T:
         return await call
     except NoteServiceError as error:
         raise HTTPException(
-            status_code=error.status_code, detail=error.detail
+            status_code=NOTE_FAILURE_STATUSES[error.code], detail=error.detail
         ) from error
 
 
@@ -62,6 +73,7 @@ async def create_note(
     body: NoteCreate,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
     idempotency_key: Annotated[
         str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
@@ -107,6 +119,7 @@ async def update_note(
     body: NoteUpdate,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
 ) -> NoteView:
     command = NoteUpdateCommand(
@@ -127,6 +140,7 @@ async def retry_note_processing(
     note_id: UUID,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(service.retry_processing(db, user.id, note_id))
@@ -143,6 +157,7 @@ async def regenerate_refinement(
     body: ProposalAction,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(
@@ -186,6 +201,7 @@ async def accept_refinement(
     body: ProposalAction,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(
