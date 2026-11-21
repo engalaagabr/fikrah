@@ -6,7 +6,7 @@
 
 **Tagline:** Your thoughts, connected.
 
-FIKRAH transforms scattered thoughts, quick notes, voice recordings, and PDF documents into structured, interconnected knowledge. Text is extracted from voice recordings and PDFs locally on the mobile device, then sent to the LLM and Backend layers for processing and storage. The original PDF remains on the device. FIKRAH is intended to be more than a note-taking app: it is a personal second brain that continuously organizes, connects, and makes a user's knowledge accessible.
+FIKRAH transforms scattered thoughts, quick notes, voice recordings, and PDF documents into structured, interconnected knowledge. Voice recordings can be transcribed through the backend Gemini transcription endpoint, returning text for review before saving a note. PDF handling remains local to the mobile device. Note endpoints receive text for processing and storage. The original PDF remains on the device. FIKRAH is intended to be more than a note-taking app: it is a personal second brain that continuously organizes, connects, and makes a user's knowledge accessible.
 
 ## Product Vision
 
@@ -18,7 +18,7 @@ Through semantic search, intelligent knowledge linking, and Retrieval-Augmented 
 
 ### Effortless Capture
 
-Users can quickly save thoughts as text, voice recordings, or PDFs. The mobile application extracts text from voice and PDF files locally; the original PDF stays on the device.
+Users can quickly save thoughts as text, voice recordings, or PDFs. Voice recordings can use backend SMART transcription, with text returned for review. PDF handling remains local; the original PDF stays on the device.
 
 ### LLM-Powered Refinement
 
@@ -38,7 +38,7 @@ Users can find information based on meaning and context, rather than relying onl
 
 ### Chat with Your Knowledge
 
-Users can ask questions and receive contextual answers grounded in their notes and text extracted locally from their voice recordings and PDFs.
+Users can ask questions and receive contextual answers grounded in their notes and text captured from their voice recordings and PDFs.
 
 ## Core Experience
 

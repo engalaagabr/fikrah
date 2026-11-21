@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import mimetypes
 import os
 import re
 import sys
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, quote, urlencode
 
@@ -43,6 +45,7 @@ class EndpointTester:
         expected_status: int,
         body: Any = None,
         extra_headers: dict[str, str] | None = None,
+        files: dict[str, tuple[str, bytes, str]] | None = None,
     ) -> bool:
         headers: dict[str, str] = {}
         if self.access_token:
@@ -61,7 +64,9 @@ class EndpointTester:
             print(f"FAIL {error}")
             return False
         try:
-            response = self.client.request(method, url, headers=headers, json=body)
+            response = self.client.request(
+                method, url, headers=headers, json=body, files=files
+            )
         except httpx.HTTPError as error:
             print(f"FAIL request error: {error}")
             return False
@@ -179,13 +184,14 @@ def describe_schema(
 
 
 def request_body_schema(
-    operation: dict[str, Any], openapi: dict[str, Any]
+    operation: dict[str, Any], openapi: dict[str, Any],
+    *, media_type: str = "application/json",
 ) -> dict[str, Any] | None:
     request_body = operation.get("requestBody", {})
     if "$ref" in request_body:
         request_body = resolve_schema(request_body, openapi)
     content = request_body.get("content", {}) if isinstance(request_body, dict) else {}
-    json_content = content.get("application/json", {})
+    json_content = content.get(media_type, {})
     schema = json_content.get("schema") if isinstance(json_content, dict) else None
     return schema if isinstance(schema, dict) else None
 
@@ -294,6 +300,24 @@ def collect_headers(operation: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
+def collect_uploads(
+    operation: dict[str, Any], openapi: dict[str, Any]
+) -> dict[str, tuple[str, bytes, str]] | None:
+    schema = request_body_schema(operation, openapi, media_type="multipart/form-data")
+    if schema is None:
+        return None
+    schema = resolve_schema(schema, openapi)
+    files = {}
+    for name, field in schema.get("properties", {}).items():
+        if field.get("format") != "binary":
+            continue
+        path = Path(input(f"File path for {name}: ").strip()).expanduser()
+        guessed = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        mime_type = input(f"File media type [{guessed}]: ").strip() or guessed
+        files[name] = (path.name, path.read_bytes(), mime_type)
+    return files or None
+
+
 def choose_endpoint(
     endpoints: list[tuple[str, str, dict[str, Any]]]
 ) -> int | None:
@@ -345,17 +369,18 @@ def run_interactive(tester: EndpointTester, openapi: dict[str, Any]) -> int:
         try:
             path = fill_path(template)
             body = collect_body(operation, openapi)
+            files = collect_uploads(operation, openapi)
             extra_headers = collect_headers(operation)
             default_status = expected_status_default(operation)
             expected_text = input(
                 f"Expected HTTP status [{default_status}]: "
             ).strip()
             expected_status = int(expected_text) if expected_text else default_status
-        except (ValueError, KeyboardInterrupt):
+        except (OSError, ValueError, KeyboardInterrupt):
             print("Endpoint call cancelled.")
             continue
 
-        if tester.test(method, path, expected_status, body, extra_headers):
+        if tester.test(method, path, expected_status, body, extra_headers, files=files):
             successes += 1
         else:
             failures += 1

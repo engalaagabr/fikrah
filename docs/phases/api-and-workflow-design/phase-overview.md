@@ -12,7 +12,7 @@ Define the mobile-to-Backend API surface for confirmed FIKRAH workflows, keeping
 - State the purpose, caller workflow, request information, and response information for each proposed endpoint.
 - Authentication and project routes are implemented. The user has approved the initial note CRUD and processing routes.
 - Keep confirmed product requirements separate from remaining product decisions.
-- Use text-only note content. PDF files remain on the mobile device; the Backend does not accept uploaded files or perform PDF/audio extraction.
+- Use text-only note content. The optional voice-capture extension accepts a recording at `POST /v1/transcriptions` and returns a SMART transcript without creating a note. PDF files remain on-device; server-side PDF extraction remains out of scope. See [recorded audio transcription](../../features/voice-transcription/recorded-audio-transcription.md) for the API and layer boundaries.
 
 ## Deferred Product Decisions
 

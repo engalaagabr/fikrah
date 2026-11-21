@@ -6,7 +6,7 @@ The user approved the initial project-scoped note routes and processing states. 
 
 ## Confirmed Behavior
 
-- Mobile sends text only. Audio transcription and PDF extraction remain local to the mobile app; the Backend stores only extracted text.
+- Mobile sends text only to note endpoints. Audio may first be converted through the separate [transcription endpoint](../voice-transcription/recorded-audio-transcription.md); PDF handling stays local. The Backend stores only the note text.
 - Notes belong to one user and one project. A user cannot read, edit, move, or delete another user's note.
 - Notes are created in the selected project; General remains the default project managed by the authentication flow.
 - The Backend generates note IDs. A missing title remains `null` while processing is pending; mobile can display `Processing…` without storing it as a real title.

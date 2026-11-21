@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     fikrah_request_max_bytes: int = Field(
         default=416_384, ge=1, validation_alias="FIKRAH_REQUEST_MAX_BYTES"
     )
+    fikrah_transcription_max_bytes: int = Field(
+        default=10_485_760,
+        ge=1,
+        le=10_485_760,
+        validation_alias="FIKRAH_TRANSCRIPTION_MAX_BYTES",
+    )
 
     fikrah_celery_max_retries: str = Field(
         default="3", validation_alias="FIKRAH_CELERY_MAX_RETRIES"
@@ -75,6 +81,10 @@ class Settings(BaseSettings):
     )
     gemini_embedding_dimensions: str = Field(
         default="768", validation_alias="GEMINI_EMBEDDING_DIMENSIONS"
+    )
+    gemini_transcription_model: str = Field(
+        default="gemini-3.5-transcribe",
+        validation_alias="GEMINI_TRANSCRIPTION_MODEL",
     )
     openrouter_api_key: str | None = Field(
         default=None, validation_alias="OPENROUTER_API_KEY"

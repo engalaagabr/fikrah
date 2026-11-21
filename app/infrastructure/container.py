@@ -15,6 +15,7 @@ from app.services.notes_service import NoteService
 from app.services.projects_service import ProjectService
 from app.services.request_budgets import RequestBudgets
 from app.services.search_service import SemanticSearchService
+from app.services.transcription_service import TranscriptionService
 
 request_budgets = RequestBudgets(
     RedisBudgetStore(lambda: get_settings().redis_url),
@@ -42,3 +43,7 @@ chat_service = ChatService(
 note_service = NoteService()
 project_service = ProjectService()
 knowledge_connection_service = KnowledgeConnectionService()
+transcription_service = TranscriptionService(
+    transcriber_factory=LLMProviderFactory.create_audio_transcriber,
+    max_audio_bytes=lambda: get_settings().fikrah_transcription_max_bytes,
+)
