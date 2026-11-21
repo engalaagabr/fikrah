@@ -15,6 +15,17 @@ DUMMY_PASSWORD_HASH = password_hasher.hash("FIKRAH non-user password timing valu
 JWT_ISSUER = "fikrah-api"
 ACCESS_TOKEN_TTL = timedelta(minutes=15)
 REFRESH_TOKEN_TTL = timedelta(days=30)
+_PUBLIC_JWT_PLACEHOLDERS = {
+    "replace-with-a-random-secret-at-least-32-characters",
+}
+
+
+def validate_jwt_secret(secret: str) -> str:
+    if len(secret) < 32:
+        raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
+    if secret.strip().lower() in _PUBLIC_JWT_PLACEHOLDERS:
+        raise RuntimeError("FIKRAH_JWT_SECRET must not use a public example value")
+    return secret
 
 
 def hash_password(password: str) -> str:
@@ -34,9 +45,7 @@ def new_opaque_token() -> str:
 
 
 def create_access_token(user_id: UUID) -> str:
-    secret = get_settings().fikrah_jwt_secret
-    if len(secret) < 32:
-        raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
+    secret = validate_jwt_secret(get_settings().fikrah_jwt_secret)
     now = datetime.now(timezone.utc)
     return jwt.encode(
         {
@@ -52,9 +61,7 @@ def create_access_token(user_id: UUID) -> str:
 
 
 def decode_access_token(token: str) -> UUID:
-    secret = get_settings().fikrah_jwt_secret
-    if len(secret) < 32:
-        raise RuntimeError("FIKRAH_JWT_SECRET must contain at least 32 characters")
+    secret = validate_jwt_secret(get_settings().fikrah_jwt_secret)
     payload = jwt.decode(token, secret, algorithms=["HS256"], issuer=JWT_ISSUER)
     if payload.get("type") != "access":
         raise jwt.InvalidTokenError("Wrong token type")

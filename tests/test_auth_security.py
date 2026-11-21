@@ -51,3 +51,17 @@ def test_opaque_token_hash_is_deterministic_and_one_way() -> None:
 
     assert hash_opaque_token(token) == hash_opaque_token(token)
     assert hash_opaque_token(token) != token
+
+
+@pytest.mark.parametrize(
+    "secret",
+    ["", "too-short", "replace-with-a-random-secret-at-least-32-characters"],
+)
+def test_auth_rejects_missing_short_and_public_example_secrets(monkeypatch, secret):
+    from app.core.security import validate_jwt_secret
+
+    monkeypatch.setenv("FIKRAH_JWT_SECRET", secret)
+    with pytest.raises(RuntimeError, match="FIKRAH_JWT_SECRET"):
+        validate_jwt_secret(secret)
+    with pytest.raises(RuntimeError, match="FIKRAH_JWT_SECRET"):
+        create_access_token(uuid4())

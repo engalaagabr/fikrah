@@ -10,12 +10,15 @@ from app.api.v1.notes import router as notes_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.search import router as search_router
 from app.core.config import get_settings
+from app.core.security import validate_jwt_secret
 from app.db.session import close_database, initialize_database
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    database_url = get_settings().database_url
+    settings = get_settings()
+    validate_jwt_secret(settings.fikrah_jwt_secret)
+    database_url = settings.database_url
     if database_url:
         initialize_database(database_url)
 

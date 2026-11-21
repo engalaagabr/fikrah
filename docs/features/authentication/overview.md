@@ -46,7 +46,7 @@ All routes use `/v1/auth`. JSON is used for requests and responses. Tokens are o
 - Password length is 15–128 characters with no composition rules. Passwords are stored using Argon2id via `pwdlib`.
 - Google ID tokens are verified against `GOOGLE_CLIENT_ID`; the Google verifier validates the signature, issuer, audience, and time claims. The backend additionally requires a verified email and stable subject.
 - Action tokens and refresh tokens are generated with a cryptographically secure random generator. Only SHA-256 hashes of these high-entropy tokens are persisted; plaintext tokens are sent once or returned once.
-- JWT signing uses HS256 with `FIKRAH_JWT_SECRET`; the secret must contain at least 32 characters. Tokens include an issuer and a distinct access-token type.
+- JWT signing uses HS256 with `FIKRAH_JWT_SECRET`; the secret must contain at least 32 characters and must not be the public `.env.example` placeholder. API startup and token signing/verification reject unsafe values. Tokens include an issuer and a distinct access-token type.
 - Email responses are intentionally generic for registration, resend, and recovery. Request throttling is persisted in PostgreSQL.
 - PostgreSQL is the source of truth for account and session state. Cascading foreign keys remove authentication data when a user record is deleted.
 - Authentication use cases use framework-independent command/result dataclasses and raise `AuthServiceError` values. The route layer maps API schemas to those commands and translates failures/results into HTTP responses.
