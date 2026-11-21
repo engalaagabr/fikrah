@@ -1,64 +1,18 @@
 """Opt-in PostgreSQL regressions, each using a disposable isolated schema."""
 
-import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from threading import Event
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, delete, event, select, text
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy import delete, event, select, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
-from sqlalchemy.schema import CreateSchema, DropSchema
 
-from app.db.base import Base
 from app.infrastructure.persistence.worker_notes import WorkerNoteProcessingRepository
 from app.infrastructure.persistence.worker_outbox import WorkerOutboxRepository
-from app.models import Note, NoteProcessingJob, Project, User
-
-
-@pytest.fixture
-def postgres_case(monkeypatch):
-    raw_url = os.getenv("FIKRAH_TEST_DATABASE_URL")
-    if not raw_url:
-        pytest.skip(
-            "Set FIKRAH_TEST_DATABASE_URL to a dedicated PostgreSQL test database"
-        )
-    url = make_url(raw_url)
-    if not url.drivername.startswith("postgresql") or not url.database.endswith(
-        "_test"
-    ):
-        pytest.fail("PostgreSQL regression database must have a name ending in _test")
-    schema = f"security_test_{uuid4().hex}"
-    control = create_engine(url)
-    with control.begin() as connection:
-        connection.execute(CreateSchema(schema))
-    scoped_url = url.update_query_dict({"options": f"-csearch_path={schema}"})
-    engine = create_engine(scoped_url)
-    monkeypatch.setenv("DATABASE_URL", scoped_url.render_as_string(hide_password=False))
-    try:
-        Base.metadata.create_all(engine)
-        with Session(engine) as session:
-            user = User(email="postgres-lock-test@example.com")
-            session.add(user)
-            session.flush()
-            project = Project(user_id=user.id, name="Isolated test")
-            session.add(project)
-            session.flush()
-            note = Note(user_id=user.id, project_id=project.id, content="Lock order")
-            session.add(note)
-            session.flush()
-            job = NoteProcessingJob(note_id=note.id, revision=1)
-            session.add(job)
-            session.commit()
-            ids = (user.id, project.id, note.id, job.id)
-        yield engine, ids
-    finally:
-        engine.dispose()
-        with control.begin() as connection:
-            connection.execute(DropSchema(schema, cascade=True))
-        control.dispose()
+from app.models import Note, NoteProcessingJob, User
 
 
 def test_note_deletion_does_not_deadlock_with_worker_claim(postgres_case):
