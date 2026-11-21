@@ -145,6 +145,56 @@ async def test_email_auth_verification_refresh_and_logout(
 
 
 @pytest.mark.asyncio
+async def test_google_link_discards_unverified_local_password(
+    auth_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    delivered: list[str] = []
+
+    async def capture_email(email: str, token: str, purpose: str) -> None:
+        delivered.append(token)
+
+    async def capture_welcome(email: str) -> None:
+        pass
+
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.send_action_email", capture_email
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.send_welcome_email", capture_welcome
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.verify_google_id_token",
+        lambda *_: {
+            "sub": "actual-mailbox-owner",
+            "email": "pre-registered@gmail.com",
+            "email_verified": True,
+        },
+    )
+    credentials = {
+        "email": "pre-registered@gmail.com",
+        "password": "a password chosen by somebody else",
+    }
+    assert (await auth_client.post("/v1/auth/register", json=credentials)).status_code == 202
+    assert (await auth_client.post("/v1/auth/login", json=credentials)).status_code == 403
+
+    linked = await auth_client.post(
+        "/v1/auth/google", json={"id_token": "verified-google-token-for-the-owner"}
+    )
+    assert linked.status_code == 200
+    assert (await auth_client.post("/v1/auth/login", json=credentials)).status_code == 401
+    assert (
+        await auth_client.post("/v1/auth/verify-email", json={"token": delivered[0]})
+    ).status_code == 400
+    assert (
+        await auth_client.get(
+            "/v1/auth/me",
+            headers={"Authorization": f"Bearer {linked.json()['access_token']}"},
+        )
+    ).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
     auth_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -10,6 +10,7 @@ This feature implements the first mobile-facing account API for the FastAPI back
 - Email/password users must verify their email before signing in.
 - The mobile client sends a Google ID token. The backend verifies it and issues FIKRAH tokens.
 - A verified Google email is automatically linked to an existing account with the same normalized email.
+- Linking an unverified local account discards its unverified password and retires pending verification/reset links. Google sign-in must never activate a password chosen before mailbox ownership was established. Passwords on already verified local accounts are preserved.
 - Every new account receives a protected `General` project.
 - Access tokens are JWTs valid for 15 minutes. Refresh tokens are opaque, valid for 30 days, rotated on use, and revocable in PostgreSQL.
 - Verification links expire after 24 hours. Password-reset links expire after one hour. Both are single-use; issuing a newer link invalidates earlier links for that purpose.

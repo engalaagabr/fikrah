@@ -1,0 +1,22 @@
+# Security and Reliability Remediation
+
+This phase addresses the architecture/security review of commit `0975d0f`. Fixes are made in small steps with regression coverage. Existing migration versions and local `.env` are preserved.
+
+| Finding | Status |
+| --- | --- |
+| F01: unverified password survives Google linking | Fixed; regression verifies the old password and pending action links cannot be used after linking. Already verified passwords remain usable. |
+| F02: non-authoritative Google email linking | Awaiting security-policy confirmation. |
+| F03/F04: login, request, and content budgets | Awaiting limits confirmation. |
+| F05/F06: worker attempt ownership and lock order | Pending. |
+| F07: answers retain invalidated evidence | Pending. |
+| F08: accepted public JWT placeholder | Pending. |
+| F09/F10: access-token invalidation and refresh replay | Awaiting security-policy confirmation. |
+| F11: reset/refresh synchronization | Pending. |
+| F12: external calls retain database transactions | Pending; worker cross-store coordination must preserve deletion consistency. |
+| F13: email delivery after commit | Pending. |
+| F14: conversation activity timestamps | Pending. |
+| F15: concurrent first-time Google sign-in | Pending. |
+
+## Verification
+
+Every implementation step runs Ruff, the full test suite, API lifespan startup and `/health`, Alembic offline metadata loading, and Celery task registration. PostgreSQL-specific concurrency claims require separate real-PostgreSQL integration coverage; SQLite tests alone are insufficient.

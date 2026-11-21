@@ -268,6 +268,15 @@ class AuthService:
                     409, "This account is linked to a different Google identity"
                 )
             else:
+                if user.email_verified_at is None:
+                    # Establishing mailbox ownership must not activate a password
+                    # chosen by whoever originally registered this address.
+                    user.password_hash = None
+                    now = datetime.now(timezone.utc)
+                    for purpose in ("verify_email", "reset_password"):
+                        await self._repository.retire_open_action_tokens(
+                            db, user.id, purpose, now
+                        )
                 user.google_subject = subject
                 user.email_verified_at = user.email_verified_at or datetime.now(
                     timezone.utc
