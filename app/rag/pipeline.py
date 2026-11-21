@@ -1,56 +1,12 @@
 """Application use case for asynchronous note analysis and indexing."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
 from uuid import UUID, uuid4
 
-from app.llm.contracts import NoteAnalysis
 from app.llm.ports import EmbeddingModel, StructuredTextGenerator
 from app.llm.use_cases import analyze_note
-
-
-@dataclass(frozen=True, slots=True)
-class NoteProcessingSnapshot:
-    job_id: UUID
-    note_id: UUID
-    user_id: UUID
-    project_id: UUID
-    revision: int
-    processing_generation: int
-    content: str
-    attempt_token: str
-
-
-class NoteProcessingRepository(Protocol):
-    def claim(
-        self, job_id: UUID, worker_task_id: str, stale_before: datetime
-    ) -> NoteProcessingSnapshot | None: ...
-
-    def complete_if_current(
-        self,
-        snapshot: NoteProcessingSnapshot,
-        analysis: NoteAnalysis,
-        persist_vector: Callable[[], None],
-    ) -> bool: ...
-
-    def fail_if_current(
-        self, snapshot: NoteProcessingSnapshot, *, terminal: bool
-    ) -> bool: ...
-
-
-class NoteVectorStore(Protocol):
-    def upsert_note(
-        self,
-        note_id: UUID,
-        vector: list[float],
-        *,
-        user_id: UUID,
-        project_id: UUID,
-        revision: int,
-        processing_generation: int,
-    ) -> None: ...
+from app.rag.ports import NoteProcessingRepository, NoteVectorStore
 
 
 class NoteProcessingService:

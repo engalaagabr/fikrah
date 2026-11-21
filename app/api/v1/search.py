@@ -10,9 +10,9 @@ from app.api.deps import (
     LLMRequestBudget,
     SearchServiceDependency,
 )
+from app.contracts.search import SearchMatch
 from app.rag.errors import SearchUnavailableError
 from app.schemas.search import SearchRequest, SearchResult
-from app.services.contracts.search import SearchMatch
 from app.services.search_errors import SearchProjectNotFound
 
 router = APIRouter(tags=["search"])

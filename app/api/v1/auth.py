@@ -6,6 +6,16 @@ from typing import TypeVar
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import AuthenticatedUser, AuthServiceDependency, Db
+from app.contracts.auth import (
+    ActionToken,
+    AuthMessage,
+    AuthTokenPair,
+    EmailAddress,
+    EmailPassword,
+    GoogleIdentityToken,
+    PasswordReset,
+    RefreshToken,
+)
 from app.schemas.auth import (
     AuthTokens,
     Credentials,
@@ -18,16 +28,6 @@ from app.schemas.auth import (
     UserView,
 )
 from app.services.auth_errors import AuthServiceError
-from app.services.contracts.auth import (
-    ActionToken,
-    AuthMessage,
-    AuthTokenPair,
-    EmailAddress,
-    EmailPassword,
-    GoogleIdentityToken,
-    PasswordReset,
-    RefreshToken,
-)
 
 router = APIRouter(prefix="/v1/auth", tags=["authentication"])
 Result = TypeVar("Result")

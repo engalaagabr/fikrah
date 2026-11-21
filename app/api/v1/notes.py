@@ -7,19 +7,19 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Response, status
 
 from app.api.deps import AuthenticatedUser, Db, LLMRequestBudget, NoteServiceDependency
+from app.contracts.note_results import NoteResult
+from app.contracts.notes import (
+    NoteCreateCommand,
+    NoteUpdateCommand,
+    ProposalActionCommand,
+    ProposalUpdateCommand,
+)
 from app.schemas.notes import (
     NoteCreate,
     NoteUpdate,
     NoteView,
     ProposalAction,
     ProposalUpdate,
-)
-from app.services.contracts.note_results import NoteResult
-from app.services.contracts.notes import (
-    NoteCreateCommand,
-    NoteUpdateCommand,
-    ProposalActionCommand,
-    ProposalUpdateCommand,
 )
 from app.services.notes_service import NoteServiceError
 

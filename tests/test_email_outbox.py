@@ -7,13 +7,13 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.contracts.auth import ActionToken, EmailPassword, GoogleIdentityToken
 from app.core.security import hash_opaque_token
 from app.db.base import Base
 from app.infrastructure.email.cipher import protect_email_token, reveal_email_token
 from app.models import EmailActionToken, EmailDelivery
 from app.services.auth_ports import EmailDeliveryError
 from app.services.auth_service import AuthService
-from app.services.contracts.auth import ActionToken, EmailPassword, GoogleIdentityToken
 from app.services.email_delivery_service import EmailDeliveryService
 
 

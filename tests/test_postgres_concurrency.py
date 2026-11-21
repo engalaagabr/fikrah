@@ -126,8 +126,8 @@ async def test_first_google_requests_create_one_account(postgres_case, monkeypat
     from sqlalchemy import func
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+    from app.contracts.auth import GoogleIdentityToken
     from app.services.auth_service import AuthService
-    from app.services.contracts.auth import GoogleIdentityToken
 
     engine, _ = postgres_case
     with engine.connect() as connection:
@@ -188,12 +188,12 @@ async def test_password_reset_serializes_with_refresh(postgres_case, monkeypatch
     from sqlalchemy import func
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+    from app.contracts.auth import PasswordReset, RefreshToken
     from app.core.security import hash_opaque_token
     from app.models import EmailActionToken, RefreshSession
     from app.repositories.auth import AuthRepository
     from app.services.auth_errors import AuthServiceError
     from app.services.auth_service import AuthService, _issue_session
-    from app.services.contracts.auth import PasswordReset, RefreshToken
 
     engine, (user_id, _, _, _) = postgres_case
     with engine.connect() as connection:

@@ -8,19 +8,19 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.note_results import NoteResult
+from app.contracts.notes import (
+    NoteCreateCommand,
+    NoteUpdateCommand,
+    ProposalActionCommand,
+    ProposalUpdateCommand,
+)
 from app.models import (
     Note,
     NoteIdempotencyKey,
     Project,
 )
 from app.repositories.notes import NoteRepository
-from app.services.contracts.note_results import NoteResult
-from app.services.contracts.notes import (
-    NoteCreateCommand,
-    NoteUpdateCommand,
-    ProposalActionCommand,
-    ProposalUpdateCommand,
-)
 
 
 class NoteServiceError(Exception):

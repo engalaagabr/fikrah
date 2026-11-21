@@ -5,10 +5,10 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.search import SearchMatch
 from app.llm.ports import EmbeddingModel
 from app.rag.retriever import retrieve_current_notes
 from app.repositories.search import SearchRepository
-from app.services.contracts.search import SearchMatch
 from app.services.search_errors import SearchProjectNotFound
 
 

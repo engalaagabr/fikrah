@@ -12,7 +12,8 @@ This guide explains where code belongs in a layer-first FastAPI backend. It is w
 | `app/models/` | ORM table mappings. |
 | `app/schemas/` | Request and response validation models. |
 | `app/repositories/` | Database queries and persistence operations. |
-| `app/services/` | Use cases, business rules, application contracts, and application errors. |
+| `app/contracts/` | Immutable shared commands, results, and processing snapshots. |
+| `app/services/` | Use cases, business rules, application ports, and application errors. |
 | `app/llm/` | Model-independent prompts/use cases, provider interfaces, provider adapters, and provider factory. |
 | `app/rag/` | Embeddings, vector-store adapter, retrieval and verification, and indexing pipelines. |
 | `app/workers/` | Queue app configuration and thin task entry points. |
@@ -25,6 +26,7 @@ This guide explains where code belongs in a layer-first FastAPI backend. It is w
 
 - **A URL handler, status code, or HTTP header?** `app/api/v1/<resource>.py`.
 - **A request body or response shape?** `app/schemas/<resource>.py`.
+- **A command/result shared across layers?** `app/contracts/<resource>.py`; keep it independent of orchestration and HTTP.
 - **A rule such as ownership, lifecycle, or a multi-step workflow?** `app/services/<resource>_service.py`.
 - **A SQL query or persistence operation?** `app/repositories/<resource>.py`.
 - **A table mapping?** `app/models/`.
@@ -61,7 +63,7 @@ For retrieval-augmented generation, treat vector-store hits as candidates. Valid
 ## Adding a feature
 
 1. Define the feature’s request and response schemas in `app/schemas/`.
-2. Add application result/command contracts and the use case in `app/services/`.
+2. Add application result/command contracts in `app/contracts/` and the use case in `app/services/`.
 3. Put database queries in `app/repositories/`; keep commits in the application workflow.
 4. Add a thin router in `app/api/v1/` and register it in `app/main.py`.
 5. Add focused unit/integration tests for behavior, authorization, failure cases, and public status codes.

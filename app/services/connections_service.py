@@ -4,13 +4,13 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.connections import KnowledgeConnectionRepository
-from app.services.contracts.connections import (
+from app.contracts.connections import (
     KnowledgeGraphEdge,
     KnowledgeGraphNode,
     ProjectKnowledgeGraph,
     RelatedNote,
 )
+from app.repositories.connections import KnowledgeConnectionRepository
 
 
 class KnowledgeResourceNotFound(Exception):

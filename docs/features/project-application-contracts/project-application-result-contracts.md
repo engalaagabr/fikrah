@@ -6,7 +6,7 @@ Keep project use cases independent from FastAPI response schemas and prevent SQL
 
 ## Design
 
-- `app/services/contracts/projects.py` defines the immutable `ProjectResult` returned by project application use cases.
+- `app/contracts/projects.py` defines the immutable `ProjectResult` returned by project application use cases.
 - `ProjectService` maps repository results to `ProjectResult` for list, create, read, and rename operations.
 - `app/api/v1/projects.py` maps `ProjectResult` values to the public `ProjectView` schema.
 - Project deletion behavior and repository persistence operations remain unchanged.

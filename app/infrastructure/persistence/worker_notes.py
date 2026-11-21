@@ -6,11 +6,11 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.contracts.processing import NoteProcessingSnapshot
 from app.db.locks import PROJECT_PROCESSING_LOCK
 from app.db.worker_session import create_worker_session_factory
 from app.llm.contracts import NoteAnalysis
 from app.models import Note, NoteProcessingJob
-from app.rag.pipeline import NoteProcessingSnapshot
 from app.repositories.worker_connections import refresh_note_connections
 
 

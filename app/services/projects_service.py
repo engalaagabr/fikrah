@@ -4,9 +4,9 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.projects import ProjectResult
 from app.models import Project
 from app.repositories.projects import ProjectRepository
-from app.services.contracts.projects import ProjectResult
 
 
 class ProjectNotFound(Exception):

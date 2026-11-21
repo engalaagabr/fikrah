@@ -5,6 +5,12 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import AuthenticatedUser, ConnectionServiceDependency, Db
+from app.contracts.connections import (
+    KnowledgeGraphEdge,
+    KnowledgeGraphNode,
+    ProjectKnowledgeGraph,
+    RelatedNote,
+)
 from app.schemas.connections import (
     GraphEdge,
     GraphNode,
@@ -13,12 +19,6 @@ from app.schemas.connections import (
 )
 from app.services.connections_service import (
     KnowledgeResourceNotFound,
-)
-from app.services.contracts.connections import (
-    KnowledgeGraphEdge,
-    KnowledgeGraphNode,
-    ProjectKnowledgeGraph,
-    RelatedNote,
 )
 
 router = APIRouter(tags=["knowledge graph"])

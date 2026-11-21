@@ -7,6 +7,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Response, status
 
 from app.api.deps import AuthenticatedUser, ChatServiceDependency, Db, LLMRequestBudget
+from app.contracts.chat import (
+    ConversationCreateCommand,
+    ConversationSummary,
+    MessageCreateCommand,
+    MessageRecord,
+    SourceReference,
+)
 from app.schemas.chat import (
     ConversationCreate,
     ConversationDetail,
@@ -17,13 +24,6 @@ from app.schemas.chat import (
     SourceView,
 )
 from app.services.chat_service import ChatServiceError
-from app.services.contracts.chat import (
-    ConversationCreateCommand,
-    ConversationSummary,
-    MessageCreateCommand,
-    MessageRecord,
-    SourceReference,
-)
 
 router = APIRouter(tags=["chat"])
 T = TypeVar("T")
