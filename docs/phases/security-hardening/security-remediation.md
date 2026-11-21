@@ -16,7 +16,7 @@ This phase addresses the architecture/security review of commit `0975d0f`. Fixes
 | F12: external calls retain database transactions | Pending; worker cross-store coordination must preserve deletion consistency. |
 | F13: email delivery after commit | Pending. |
 | F14: conversation activity timestamps | Pending. |
-| F15: concurrent first-time Google sign-in | Pending. |
+| F15: concurrent first-time Google sign-in | Fixed; shared identity locks serialize account creation, with a real PostgreSQL concurrent sign-in regression. |
 
 ## Verification
 

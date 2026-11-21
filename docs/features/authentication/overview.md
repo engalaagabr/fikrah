@@ -79,3 +79,5 @@ Authentication helper tests cover password hashing, JWT identity/type checks, an
 - [FastAPI OAuth2 and JWT security](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/)
 - [Google Auth ID-token verification](https://google-auth.readthedocs.io/en/latest/reference/google.oauth2.id_token.html)
 - [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+
+Account creation is serialized with transaction-scoped PostgreSQL identity advisory locks, including when no account row exists yet. Email/password registration and Google creation share the normalized email lock; Google also locks its stable subject. Concurrent first sign-ins create one user and one General project.

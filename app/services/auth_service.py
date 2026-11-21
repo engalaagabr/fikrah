@@ -129,6 +129,7 @@ class AuthService:
     async def register(self, body: EmailPassword, db: AsyncSession) -> AuthMessage:
         raw_token: str | None = None
         async with db.begin():
+            await self._repository.lock_account_creation(db, body.email)
             existing_user_id = await self._repository.find_user_id_by_email(
                 db, body.email
             )
@@ -242,6 +243,7 @@ class AuthService:
 
         created_user = False
         async with db.begin():
+            await self._repository.lock_account_creation(db, email, str(subject))
             subject_user = await self._repository.find_user_by_google_subject(
                 db, subject
             )

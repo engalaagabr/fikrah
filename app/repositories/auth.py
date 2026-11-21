@@ -10,6 +10,20 @@ from app.models import EmailActionToken, EmailSendAttempt, Project, RefreshSessi
 
 
 class AuthRepository:
+    async def lock_account_creation(
+        self, db: AsyncSession, email: str, google_subject: str | None = None
+    ) -> None:
+        if db.get_bind().dialect.name != "postgresql":
+            return
+        identities = {f"email:{email}"}
+        if google_subject is not None:
+            identities.add(f"google:{google_subject}")
+        for identity in sorted(identities):
+            await db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 74192039))"),
+                {"identity": identity},
+            )
+
     async def add_user(self, db: AsyncSession, user: User) -> None:
         db.add(user)
         await db.flush()

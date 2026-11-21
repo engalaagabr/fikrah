@@ -105,3 +105,48 @@ def test_dispatcher_skips_notes_locked_by_another_transaction(postgres_case):
             ) == ([], [])
     finally:
         repository.close()
+
+
+@pytest.mark.asyncio
+async def test_first_google_requests_create_one_account(postgres_case, monkeypatch):
+    import asyncio
+
+    from sqlalchemy import func
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.services.auth_service import AuthService
+    from app.services.contracts.auth import GoogleIdentityToken
+
+    engine, _ = postgres_case
+    with engine.connect() as connection:
+        schema = connection.scalar(text("SELECT current_schema()"))
+    url = engine.url.set(drivername="postgresql+asyncpg", query={})
+    async_engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
+    sessions = async_sessionmaker(async_engine, expire_on_commit=False)
+    monkeypatch.setenv("FIKRAH_JWT_SECRET", "postgres-auth-test-private-secret-32-characters")
+
+    async def discard(*_):
+        pass
+
+    service = AuthService(
+        send_action_email=discard, send_welcome_email=discard,
+        google_client_id=lambda: "test-client",
+        verify_google_id_token=lambda *_: {
+            "sub": "simultaneous-google-subject", "email": "simultaneous@gmail.com",
+            "email_verified": True,
+        },
+    )
+    barrier = asyncio.Barrier(2)
+
+    async def login():
+        async with sessions() as db:
+            await barrier.wait()
+            return await service.google_login(GoogleIdentityToken(id_token="test-token"), db)
+
+    try:
+        pairs = await asyncio.gather(login(), login())
+        assert all(pair.access_token for pair in pairs)
+        with Session(engine) as db:
+            assert db.scalar(select(func.count(User.id)).where(User.email == "simultaneous@gmail.com")) == 1
+    finally:
+        await async_engine.dispose()
