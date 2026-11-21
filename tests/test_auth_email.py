@@ -6,6 +6,43 @@ from app.infrastructure.email.smtp import send_action_email
 
 
 @pytest.mark.parametrize(
+    ("username", "password", "expected_username", "expected_password"),
+    [
+        (None, None, None, None),
+        ("", "", None, None),
+        ("smtp-user", " secret with spaces ", "smtp-user", " secret with spaces "),
+    ],
+)
+@pytest.mark.asyncio
+async def test_smtp_authentication_is_optional(
+    monkeypatch: pytest.MonkeyPatch,
+    username: str | None,
+    password: str | None,
+    expected_username: str | None,
+    expected_password: str | None,
+) -> None:
+    from app.infrastructure.email.smtp import send_welcome_email
+
+    monkeypatch.setenv("SMTP_HOST", "mailpit")
+    monkeypatch.setenv("SMTP_FROM", "no-reply@fikrah.local")
+    for key, value in {"SMTP_USERNAME": username, "SMTP_PASSWORD": password}.items():
+        if value is None:
+            monkeypatch.delenv(key, raising=False)
+        else:
+            monkeypatch.setenv(key, value)
+    captured: dict[str, object] = {}
+
+    async def capture_send(message: EmailMessage, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr("app.infrastructure.email.smtp.aiosmtplib.send", capture_send)
+    await send_welcome_email("person@example.test")
+
+    assert captured["username"] == expected_username
+    assert captured["password"] == expected_password
+
+
+@pytest.mark.parametrize(
     ("purpose", "subject", "html_phrase"),
     [
         ("verify_email", "Verify your email to sign in", "Verify email and continue"),
