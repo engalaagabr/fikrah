@@ -131,6 +131,9 @@ async def test_chat_persists_messages_and_only_authorized_citations(
         @staticmethod
         def create_text_generator():
             class FakeStructuredTextGenerator:
+                def close(self) -> None:
+                    pass
+
                 def generate_structured(
                     self, *, system_instruction, user_content, response_model
                 ) -> ChatAnswer:
@@ -224,6 +227,9 @@ async def test_chat_returns_clear_unsupported_answer_when_no_notes_match(
         @staticmethod
         def create_text_generator():
             class FakeStructuredTextGenerator:
+                def close(self) -> None:
+                    pass
+
                 def generate_structured(
                     self, *, system_instruction, user_content, response_model
                 ) -> ChatAnswer:
@@ -302,6 +308,9 @@ async def test_chat_uses_latest_twelve_messages_in_chronological_order(
         @staticmethod
         def create_text_generator():
             class FakeStructuredTextGenerator:
+                def close(self) -> None:
+                    pass
+
                 def generate_structured(
                     self, *, system_instruction, user_content, response_model
                 ) -> ChatAnswer:
@@ -365,6 +374,9 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
         @staticmethod
         def create_text_generator():
             class FakeStructuredTextGenerator:
+                def close(self) -> None:
+                    pass
+
                 def generate_structured(
                     self, *, system_instruction, user_content, response_model
                 ) -> ChatAnswer:
@@ -383,7 +395,10 @@ async def test_chat_rejects_a_reply_when_the_conversation_changes_during_generat
 
     async def run_in_thread(function, *args, **kwargs):
         nonlocal answer_call_seen
-        if function is chat_service_module.answer_project_question:
+        if (
+            function is chat_service_module.run_with_provider
+            and args[0] is Factory.create_text_generator
+        ):
             answer_call_seen = True
             async with sessions() as session:
                 session.add(
@@ -584,6 +599,9 @@ async def test_chat_rejects_answer_when_only_some_cited_notes_are_still_current(
 
     calls = []
     class Generator:
+        def close(self) -> None:
+            pass
+
         def generate_structured(self, **kwargs):
             notes = json.loads(kwargs["user_content"])["project_notes"]
             calls.append(notes)
@@ -615,6 +633,9 @@ async def test_new_message_updates_named_conversation_activity(chat_api, monkeyp
         return []
 
     class Generator:
+        def close(self) -> None:
+            pass
+
         def generate_structured(self, **kwargs):
             return ChatAnswer(answer="No supported answer.", supported=False)
 
@@ -630,3 +651,146 @@ async def test_new_message_updates_named_conversation_activity(chat_api, monkeyp
     response = await client.post(f"/v1/conversations/{conversation_id}/messages", headers=headers, json={"content": "A new question"})
     assert response.status_code == 200
     assert response.json()["conversation"]["updated_at"] > "2020-01-01"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scenario",
+    ["answer", "generation_failure", "factory_failure", "conflict", "refusal"],
+)
+async def test_chat_closes_owned_generators_before_validation(
+    chat_api, monkeypatch, scenario
+):
+    from threading import get_ident
+    from uuid import uuid4
+
+    client, _, _, project_id, _, _, _, token, _ = chat_api
+    service = service_container.chat_service
+    clients = []
+    threads = []
+
+    async def no_matches(*_):
+        return []
+
+    class Generator:
+        def __init__(self):
+            threads.append(get_ident())
+            if scenario == "factory_failure":
+                raise RuntimeError("controlled client creation failure")
+            self.closed = False
+            clients.append(self)
+
+        def generate_structured(self, **kwargs):
+            threads.append(get_ident())
+            assert not self.closed
+            if scenario == "generation_failure":
+                raise ValueError("controlled generation failure")
+            if scenario == "refusal" and len(clients) == 1:
+                return ChatAnswer(answer="Unusable uncited answer", supported=True)
+            return ChatAnswer(answer="No supported answer.", supported=False)
+
+        def close(self):
+            threads.append(get_ident())
+            assert not self.closed
+            self.closed = True
+
+    original_latest = service._repository.latest_message_id
+
+    async def latest(db, conversation_id):
+        assert clients and all(provider.closed for provider in clients)
+        if scenario == "conflict":
+            return uuid4()
+        return await original_latest(db, conversation_id)
+
+    monkeypatch.setattr(service_container.search_service, "retrieve", no_matches)
+    monkeypatch.setattr(service, "_text_generator_factory", Generator)
+    monkeypatch.setattr(service._repository, "latest_message_id", latest)
+    headers = {"Authorization": f"Bearer {token}"}
+    created = await client.post(
+        f"/v1/projects/{project_id}/conversations", headers=headers, json={}
+    )
+    main_thread = get_ident()
+    response = await client.post(
+        f"/v1/conversations/{created.json()['id']}/messages",
+        headers=headers,
+        json={"content": "What did I save?"},
+    )
+    expected_status = {
+        "generation_failure": 503,
+        "factory_failure": 503,
+        "conflict": 409,
+    }.get(scenario, 200)
+    assert response.status_code == expected_status
+    assert all(provider.closed for provider in clients)
+    expected_count = (
+        0 if scenario == "factory_failure" else (2 if scenario == "refusal" else 1)
+    )
+    assert len(clients) == expected_count
+    assert threads and main_thread not in threads
+    for start in range(0, len(threads), 3):
+        assert len(set(threads[start : start + 3])) == 1
+    if expected_status == 200:
+        assert response.json()["assistant_message"]["supported"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_fails", [False, True])
+async def test_cancelled_chat_closes_provider_after_request_finishes(
+    chat_api, monkeypatch, provider_fails
+):
+    import asyncio
+    from threading import Event
+
+    client, sessions, _, project_id, _, _, _, token, _ = chat_api
+    started, release, closed = Event(), Event(), Event()
+
+    async def no_matches(*_):
+        return []
+
+    class Generator:
+        def generate_structured(self, **kwargs):
+            started.set()
+            assert release.wait(5)
+            assert not closed.is_set()
+            if provider_fails:
+                raise ValueError("provider failed after cancellation")
+            return ChatAnswer(answer="No supported answer.", supported=False)
+
+        def close(self):
+            assert not closed.is_set()
+            closed.set()
+
+    monkeypatch.setattr(service_container.search_service, "retrieve", no_matches)
+    monkeypatch.setattr(
+        service_container.chat_service, "_text_generator_factory", Generator
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    created = await client.post(
+        f"/v1/projects/{project_id}/conversations", headers=headers, json={}
+    )
+    conversation_id = created.json()["id"]
+    task = asyncio.create_task(
+        client.post(
+            f"/v1/conversations/{conversation_id}/messages",
+            headers=headers,
+            json={"content": "Cancelled question"},
+        )
+    )
+    try:
+        assert await asyncio.to_thread(started.wait, 3)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not closed.is_set()
+    finally:
+        release.set()
+        assert await asyncio.to_thread(closed.wait, 3)
+    async with sessions() as db:
+        messages = list(
+            await db.scalars(
+                select(ChatMessage).where(
+                    ChatMessage.conversation_id == UUID(conversation_id)
+                )
+            )
+        )
+        assert messages == []

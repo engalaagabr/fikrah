@@ -53,6 +53,17 @@ def test_factory_failure_does_not_attempt_to_close_an_uncreated_provider():
     operation.assert_not_called()
 
 
+def test_cleanup_failure_is_reported_to_the_workflow():
+    failure = OSError("controlled close failure")
+    client = SimpleNamespace(close=Mock(side_effect=failure))
+    operation = Mock(return_value=42)
+    with pytest.raises(OSError) as caught:
+        run_with_provider(lambda: client, operation)
+    assert caught.value is failure
+    operation.assert_called_once_with(client)
+    client.close.assert_called_once_with()
+
+
 @pytest.mark.parametrize(
     ("adapter_type", "args", "sdk"),
     [

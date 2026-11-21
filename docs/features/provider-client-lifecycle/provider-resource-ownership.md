@@ -13,9 +13,9 @@ For async workflows the entire scope must run inside `asyncio.to_thread`. Cancel
 - Explicit adapter cleanup and a shared ownership helper are implemented.
 - Worker analysis and embeddings each close their client before vector/database completion. If analysis fails, no embedding client is created.
 - Search creates, uses, and closes its embedding model inside one background thread, before querying Qdrant or validating PostgreSQL results.
-- Chat generation is being migrated to this ownership scope.
+- Chat creates, uses, and closes its generator inside one background thread per generation. The client closes before citation validation, conversation conflict checks, or persistence. A localized refusal uses a fresh client from the same configured factory rather than reusing a closed client.
 - Qdrant already closes its clients in `finally`; its locking/consistency policy is unchanged.
 
 ## Verification
 
-Tests use fake SDK clients and controlled worker threads. They cover success, exceptions, factory failure, SDK close delegation, and caller cancellation. No live provider requests or API keys are required.
+Tests use fake SDK clients and controlled worker threads. They cover success, exceptions, factory failure, SDK close delegation, and caller cancellation, plus worker/retrieval/chat execution paths, chat conflicts and refusal generation. No live provider requests or API keys are required. API contracts, model settings, prompts, timeout/retry policy, database transactions, and Celery task names are preserved.

@@ -38,6 +38,7 @@ class GeminiEmbeddingModel:
 
 
 def create_embedding_model() -> EmbeddingModel:
+    """Return a fresh embedding model whose client must be closed by its caller."""
     settings = get_settings()
     api_key = settings.gemini_api_key
     if not api_key:
