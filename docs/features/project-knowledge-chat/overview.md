@@ -50,3 +50,5 @@ HTTP request and response models stay in `app/schemas/chat.py`. Routes map valid
 Tests cover conversation persistence, automatic titles, project/user isolation, authorized citations, unsupported answers, and citation/conversation cleanup on deletion.
 
 Before saving an answer, every retrieved citation is rechecked against current note state/revision. If any cited note changed or disappeared during generation, the entire generated answer is discarded, even when another citation remains valid. The service produces an unsupported response instead of retaining claims from invalidated evidence.
+
+Every successful message transaction advances the conversation activity timestamp, including conversations with a user-provided title. Conversation lists therefore reflect the latest successful exchange.

@@ -15,7 +15,7 @@ This phase addresses the architecture/security review of commit `0975d0f`. Fixes
 | F11: reset/refresh synchronization | Fixed with user-first locking and a real PostgreSQL concurrent reset/refresh regression. New migration retires legacy tokens. |
 | F12: external calls retain database transactions | Pending; worker cross-store coordination must preserve deletion consistency. |
 | F13: email delivery after commit | Pending. |
-| F14: conversation activity timestamps | Pending. |
+| F14: conversation activity timestamps | Fixed; successful message exchanges update activity even when a title already exists. |
 | F15: concurrent first-time Google sign-in | Fixed; shared identity locks serialize account creation, with a real PostgreSQL concurrent sign-in regression. |
 
 ## Verification

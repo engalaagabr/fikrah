@@ -272,6 +272,7 @@ class ChatService:
             valid_sources = []
 
         now = datetime.now(timezone.utc)
+        conversation.updated_at = now
         user_message = ChatMessage(
             conversation_id=conversation.id,
             role="user",
