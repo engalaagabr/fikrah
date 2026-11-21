@@ -3,7 +3,16 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -15,11 +24,17 @@ class Note(Base):
     __tablename__ = "notes"
     __table_args__ = (
         Index("ix_notes_user_project_updated", "user_id", "project_id", "updated_at"),
+        ForeignKeyConstraint(
+            ["project_id", "user_id"],
+            ["projects.id", "projects.user_id"],
+            name="fk_notes_project_owner",
+            ondelete="CASCADE",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[UUID] = mapped_column(index=True)
     title: Mapped[str | None] = mapped_column(String(240), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     concepts: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
