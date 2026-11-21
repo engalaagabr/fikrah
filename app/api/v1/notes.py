@@ -21,10 +21,21 @@ from app.schemas.notes import (
     ProposalAction,
     ProposalUpdate,
 )
-from app.services.notes_service import NoteServiceError
+from app.services.note_errors import NoteFailure, NoteServiceError
 
 router = APIRouter(tags=["notes"])
 T = TypeVar("T")
+
+NOTE_FAILURE_STATUSES = {
+    NoteFailure.NOTE_NOT_FOUND: 404,
+    NoteFailure.PROJECT_NOT_FOUND: 404,
+    NoteFailure.IDEMPOTENCY_CONFLICT: 409,
+    NoteFailure.NOTE_DELETED: 410,
+    NoteFailure.EMPTY_CONTENT: 422,
+    NoteFailure.STALE_PROCESSING_RESULT: 409,
+    NoteFailure.PROCESSING_INCOMPLETE: 409,
+    NoteFailure.PROPOSAL_UNAVAILABLE: 409,
+}
 
 
 async def _execute(call: Awaitable[T]) -> T:
@@ -32,7 +43,7 @@ async def _execute(call: Awaitable[T]) -> T:
         return await call
     except NoteServiceError as error:
         raise HTTPException(
-            status_code=error.status_code, detail=error.detail
+            status_code=NOTE_FAILURE_STATUSES[error.code], detail=error.detail
         ) from error
 
 

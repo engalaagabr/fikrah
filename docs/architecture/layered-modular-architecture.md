@@ -40,6 +40,8 @@ Celery task → worker composition root → note-processing service → reposito
 
 Routers validate HTTP input, obtain the authenticated user and application-service instances through `app/api/deps.py`, call services, and map results/errors to HTTP responses. They do not import the infrastructure composition root directly or own SQL, provider SDK calls, or product workflows. `app/infrastructure/container.py` constructs the shared service instances; API providers expose them through FastAPI dependencies.
 
+Application errors carry feature-specific failure codes and safe messages, plus retry timing where needed. HTTP status and header mappings live in the route layer; services do not select HTTP responses. The authentication dependency separately translates an invalid/revoked identity to its existing bearer challenge.
+
 Application services own API workflow rules, user/project scoping, and transaction commits. API repositories execute database operations and flush when needed; they do not commit. Worker persistence remains a deliberate exception: its existing adapter methods use `session.begin()` so the worker’s atomic transaction boundaries remain unchanged.
 
 Qdrant returns candidate note identifiers and indexed revisions. `app/rag/retriever.py` validates each candidate against PostgreSQL for the authenticated user, selected project, completed state, and current revision before returning it. PostgreSQL remains authoritative.

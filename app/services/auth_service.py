@@ -34,7 +34,7 @@ from app.core.security import (
 from app.models import EmailActionToken, EmailDelivery, Project, RefreshSession, User
 from app.repositories.auth import AuthRepository
 from app.repositories.email import EmailOutboxRepository
-from app.services.auth_errors import AuthServiceError
+from app.services.auth_errors import AuthFailure, AuthServiceError
 from app.services.auth_ports import GoogleIdentityTokenError
 from app.services.email_delivery_service import EmailDeliveryService
 from app.services.request_budgets import RequestBudgetExceeded, RequestBudgetUnavailable
@@ -47,12 +47,6 @@ VerifyGoogleIdToken = Callable[[str, str], dict[str, object]]
 GoogleClientId = Callable[[], str | None]
 
 
-def _auth_error(
-    code: int, message: str, *, headers: dict[str, str] | None = None
-) -> AuthServiceError:
-    return AuthServiceError(code, message, headers=headers)
-
-
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
@@ -61,8 +55,8 @@ async def _password_work(operation: Callable, *args):
     try:
         return await run_password_work(operation, *args)
     except PasswordWorkBusy as error:
-        raise _auth_error(
-            429, "Password processing is busy", headers={"Retry-After": "1"}
+        raise AuthServiceError(
+            AuthFailure.PASSWORD_BUSY, "Password processing is busy", retry_after=1
         ) from error
 
 
@@ -196,7 +190,9 @@ class AuthService:
             db, identity.user_id, identity.family_id, datetime.now(timezone.utc)
         )
         if user is None:
-            raise _auth_error(401, "Invalid or expired access token")
+            raise AuthServiceError(
+                AuthFailure.INVALID_ACCESS_TOKEN, "Invalid or expired access token"
+            )
         return user
 
     async def _locked_action_user(
@@ -212,7 +208,7 @@ class AuthService:
             else "The password reset link is invalid or expired"
         )
         if initial is None:
-            raise _auth_error(400, message)
+            raise AuthServiceError(AuthFailure.INVALID_ACTION_TOKEN, message)
         user = await self._repository.get_user(db, initial.user_id, lock=True)
         action = await self._repository.find_action_token(db, token_hash, purpose)
         now = datetime.now(timezone.utc)
@@ -222,7 +218,7 @@ class AuthService:
             or action.used_at is not None
             or _utc(action.expires_at) <= now
         ):
-            raise _auth_error(400, message)
+            raise AuthServiceError(AuthFailure.INVALID_ACTION_TOKEN, message)
         return action, user
 
     async def register(self, body: EmailPassword, db: AsyncSession) -> AuthMessage:
@@ -292,27 +288,30 @@ class AuthService:
             try:
                 await self._login_budget(body.email)
             except RequestBudgetExceeded as error:
-                raise _auth_error(
-                    429,
+                raise AuthServiceError(
+                    AuthFailure.LOGIN_BUDGET_EXCEEDED,
                     "Too many login attempts",
-                    headers={"Retry-After": str(error.retry_after)},
+                    retry_after=error.retry_after,
                 ) from error
             except RequestBudgetUnavailable as error:
-                raise _auth_error(
-                    503, "Authentication is temporarily unavailable"
+                raise AuthServiceError(
+                    AuthFailure.LOGIN_BUDGET_UNAVAILABLE,
+                    "Authentication is temporarily unavailable",
                 ) from error
         user = await self._repository.find_user_by_email(db, body.email, lock=True)
         if user is None or user.password_hash is None:
             await _password_work(verify_password, body.password, DUMMY_PASSWORD_HASH)
-            raise _auth_error(
-                401, "Invalid email or password", headers={"WWW-Authenticate": "Bearer"}
+            raise AuthServiceError(
+                AuthFailure.INVALID_CREDENTIALS, "Invalid email or password"
             )
         if not await _password_work(verify_password, body.password, user.password_hash):
-            raise _auth_error(
-                401, "Invalid email or password", headers={"WWW-Authenticate": "Bearer"}
+            raise AuthServiceError(
+                AuthFailure.INVALID_CREDENTIALS, "Invalid email or password"
             )
         if user.email_verified_at is None:
-            raise _auth_error(403, "Verify your email before signing in")
+            raise AuthServiceError(
+                AuthFailure.EMAIL_NOT_VERIFIED, "Verify your email before signing in"
+            )
         tokens = await _issue_session(db, user, self._repository)
         await db.commit()
         return tokens
@@ -322,17 +321,24 @@ class AuthService:
     ) -> AuthTokenPair:
         audience = self.google_client_id()
         if not audience:
-            raise _auth_error(503, "Google sign-in is not configured")
+            raise AuthServiceError(
+                AuthFailure.GOOGLE_UNAVAILABLE, "Google sign-in is not configured"
+            )
         try:
             claims = await asyncio.to_thread(
                 self.verify_google_id_token, body.id_token, audience
             )
         except GoogleIdentityTokenError:
-            raise _auth_error(401, "Invalid Google ID token")
+            raise AuthServiceError(
+                AuthFailure.INVALID_GOOGLE_IDENTITY, "Invalid Google ID token"
+            )
         email = str(claims.get("email", "")).strip().lower()
         subject = claims.get("sub")
         if not email or not subject or claims.get("email_verified") is not True:
-            raise _auth_error(401, "Google account must have a verified email")
+            raise AuthServiceError(
+                AuthFailure.INVALID_GOOGLE_IDENTITY,
+                "Google account must have a verified email",
+            )
 
         delivery_ids: list[UUID] = []
         async with db.begin():
@@ -344,14 +350,15 @@ class AuthService:
                 isinstance(claims.get("hd"), str) and bool(claims["hd"].strip())
             )
             if subject_user is None and not authoritative_email:
-                raise _auth_error(
-                    401,
+                raise AuthServiceError(
+                    AuthFailure.INVALID_GOOGLE_IDENTITY,
                     "Google cannot establish current ownership of this email address",
                 )
             user = await self._repository.find_user_by_email(db, email, lock=True)
             if subject_user is not None and subject_user.email != email:
-                raise _auth_error(
-                    409, "The Google identity is linked to a different email address"
+                raise AuthServiceError(
+                    AuthFailure.GOOGLE_IDENTITY_CONFLICT,
+                    "The Google identity is linked to a different email address",
                 )
             if user is None:
                 user = User(
@@ -365,8 +372,9 @@ class AuthService:
                 )
                 delivery_ids.append(await self._queue_email(db, user, "welcome"))
             elif user.google_subject not in (None, subject):
-                raise _auth_error(
-                    409, "This account is linked to a different Google identity"
+                raise AuthServiceError(
+                    AuthFailure.GOOGLE_IDENTITY_CONFLICT,
+                    "This account is linked to a different Google identity",
                 )
             else:
                 if user.email_verified_at is None:
@@ -453,7 +461,9 @@ class AuthService:
                         previous.revoked_at = now
                         previous.replaced_by_id = replacement.id
         if tokens is None:
-            raise _auth_error(401, "Invalid or expired refresh token")
+            raise AuthServiceError(
+                AuthFailure.INVALID_REFRESH_TOKEN, "Invalid or expired refresh token"
+            )
         return tokens
 
     async def logout(self, body: RefreshToken, db: AsyncSession) -> AuthMessage:

@@ -21,13 +21,7 @@ from app.models import (
     Project,
 )
 from app.repositories.notes import NoteRepository
-
-
-class NoteServiceError(Exception):
-    def __init__(self, status_code: int, detail: str) -> None:
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
+from app.services.note_errors import NoteFailure, NoteServiceError
 
 
 class NoteService:
@@ -37,11 +31,9 @@ class NoteService:
     async def _owned_note(
         self, db: AsyncSession, user_id: UUID, note_id: UUID, *, lock: bool = False
     ) -> Note:
-        note = await self._repository.find_owned_note(
-            db, user_id, note_id, lock=lock
-        )
+        note = await self._repository.find_owned_note(db, user_id, note_id, lock=lock)
         if note is None:
-            raise NoteServiceError(404, "Note not found")
+            raise NoteServiceError(NoteFailure.NOTE_NOT_FOUND, "Note not found")
         return note
 
     async def _owned_project(
@@ -51,7 +43,7 @@ class NoteService:
             db, user_id, project_id, lock=lock
         )
         if project is None:
-            raise NoteServiceError(404, "Project not found")
+            raise NoteServiceError(NoteFailure.PROJECT_NOT_FOUND, "Project not found")
         return project
 
     @staticmethod
@@ -114,12 +106,14 @@ class NoteService:
     ) -> Note:
         if previous.request_hash != fingerprint:
             raise NoteServiceError(
-                409, "Idempotency-Key was used with a different request"
+                NoteFailure.IDEMPOTENCY_CONFLICT,
+                "Idempotency-Key was used with a different request",
             )
         note = await self._repository.get_note(db, previous.note_id)
         if note is None:
             raise NoteServiceError(
-                410, "The note created by this request no longer exists"
+                NoteFailure.NOTE_DELETED,
+                "The note created by this request no longer exists",
             )
         return note
 
@@ -142,7 +136,9 @@ class NoteService:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if "content" in body.provided_fields:
             if body.content is None:
-                raise NoteServiceError(422, "Note content cannot be null")
+                raise NoteServiceError(
+                    NoteFailure.EMPTY_CONTENT, "Note content cannot be null"
+                )
             note.content = body.content
             note.refinement_proposal = None
         if "title" in body.provided_fields:
@@ -177,10 +173,14 @@ class NoteService:
     ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
-            raise NoteServiceError(409, "The note processing result has changed")
+            raise NoteServiceError(
+                NoteFailure.STALE_PROCESSING_RESULT,
+                "The note processing result has changed",
+            )
         if note.processing_status != "completed":
             raise NoteServiceError(
-                409, "The note must finish processing before regenerating its proposal"
+                NoteFailure.PROCESSING_INCOMPLETE,
+                "The note must finish processing before regenerating its proposal",
             )
         note.processing_generation += 1
         note.refinement_proposal = None
@@ -199,9 +199,15 @@ class NoteService:
     ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
-            raise NoteServiceError(409, "The note processing result has changed")
+            raise NoteServiceError(
+                NoteFailure.STALE_PROCESSING_RESULT,
+                "The note processing result has changed",
+            )
         if note.processing_status != "completed" or note.refinement_proposal is None:
-            raise NoteServiceError(409, "No completed refinement proposal is available")
+            raise NoteServiceError(
+                NoteFailure.PROPOSAL_UNAVAILABLE,
+                "No completed refinement proposal is available",
+            )
         note.content = note.refinement_proposal
         note.refinement_proposal = None
         note.revision += 1
@@ -221,9 +227,15 @@ class NoteService:
     ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
-            raise NoteServiceError(409, "The note processing result has changed")
+            raise NoteServiceError(
+                NoteFailure.STALE_PROCESSING_RESULT,
+                "The note processing result has changed",
+            )
         if note.processing_status != "completed" or note.refinement_proposal is None:
-            raise NoteServiceError(409, "No completed refinement proposal is available")
+            raise NoteServiceError(
+                NoteFailure.PROPOSAL_UNAVAILABLE,
+                "No completed refinement proposal is available",
+            )
         note.refinement_proposal = body.refinement_proposal
         note.processing_generation += 1
         await db.commit()
@@ -239,7 +251,10 @@ class NoteService:
     ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
         if note.processing_generation != body.expected_processing_generation:
-            raise NoteServiceError(409, "The note processing result has changed")
+            raise NoteServiceError(
+                NoteFailure.STALE_PROCESSING_RESULT,
+                "The note processing result has changed",
+            )
         note.refinement_proposal = None
         await db.commit()
         await self._repository.refresh_note(db, note)

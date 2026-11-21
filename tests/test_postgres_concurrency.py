@@ -192,7 +192,7 @@ async def test_password_reset_serializes_with_refresh(postgres_case, monkeypatch
     from app.core.security import hash_opaque_token
     from app.models import EmailActionToken, RefreshSession
     from app.repositories.auth import AuthRepository
-    from app.services.auth_errors import AuthServiceError
+    from app.services.auth_errors import AuthFailure, AuthServiceError
     from app.services.auth_service import AuthService, _issue_session
 
     engine, (user_id, _, _, _) = postgres_case
@@ -260,7 +260,7 @@ async def test_password_reset_serializes_with_refresh(postgres_case, monkeypatch
                     RefreshToken(refresh_token=tokens.refresh_token), db
                 )
             except AuthServiceError as error:
-                assert error.status_code == 401
+                assert error.code == AuthFailure.INVALID_REFRESH_TOKEN
                 return None
 
     event.listen(async_engine.sync_engine, "before_cursor_execute", observe)
