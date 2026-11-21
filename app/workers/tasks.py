@@ -1,8 +1,10 @@
 """Celery tasks for note processing and Qdrant cleanup."""
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from app.infrastructure.email.worker import deliver_pending_account_emails
 from app.infrastructure.persistence.worker_outbox import WorkerOutboxRepository
 from app.infrastructure.worker_container import create_note_processing_service
 from app.rag.vector_store import QdrantNoteVectorStore
@@ -10,6 +12,11 @@ from app.workers.celery_app import celery_app, settings
 
 _STALE_DISPATCH_AFTER = timedelta(seconds=settings.stale_dispatch_after_seconds)
 _STALE_PROCESSING_AFTER = timedelta(seconds=settings.stale_processing_after_seconds)
+
+
+@celery_app.task(name="app.workers.tasks.deliver_account_emails", acks_late=True)
+def deliver_account_emails() -> None:
+    asyncio.run(deliver_pending_account_emails())
 
 
 @celery_app.task(
@@ -25,7 +32,8 @@ def process_note_job(self, job_id: str) -> None:
     service, repository = create_note_processing_service(_STALE_PROCESSING_AFTER)
     try:
         service.process(
-            UUID(job_id), self.request.id,
+            UUID(job_id),
+            self.request.id,
             terminal_on_error=self.request.retries >= settings.max_retries,
         )
     finally:

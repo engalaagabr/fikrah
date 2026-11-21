@@ -1,6 +1,7 @@
 """Composition root for application services and infrastructure adapters."""
 
 from app.core.config import get_settings
+from app.infrastructure.email.cipher import protect_email_token, reveal_email_token
 from app.infrastructure.email.smtp import send_action_email, send_welcome_email
 from app.infrastructure.identity.google import verify_google_id_token
 from app.infrastructure.rate_limits import RedisBudgetStore
@@ -23,6 +24,8 @@ request_budgets = RequestBudgets(
 
 auth_service = AuthService(
     send_action_email=send_action_email,
+    protect_email_token=protect_email_token,
+    reveal_email_token=reveal_email_token,
     send_welcome_email=send_welcome_email,
     verify_google_id_token=verify_google_id_token,
     google_client_id=lambda: get_settings().google_client_id,

@@ -19,7 +19,7 @@ This feature implements the first mobile-facing account API for the FastAPI back
 
 ## API Contract
 
-All routes use `/v1/auth`. JSON is used for requests and responses. Tokens are only returned from successful authentication or refresh calls. Validation errors use FastAPI's standard `422` response; authentication failures use `401`, unverified email uses `403`, and unavailable email delivery uses `503`.
+All routes use `/v1/auth`. JSON is used for requests and responses. Tokens are only returned from successful authentication or refresh calls. Validation errors use FastAPI's standard `422` response; authentication failures use `401`, and unverified email uses `403`. SMTP failures defer durable email delivery without changing a committed registration/recovery response or suppressing Google login tokens.
 
 | Endpoint | Purpose and mobile call timing | Request | Response |
 | --- | --- | --- | --- |
@@ -45,7 +45,7 @@ All routes use `/v1/auth`. JSON is used for requests and responses. Tokens are o
 
 - Password length is 15–128 characters with no composition rules. Passwords are stored using Argon2id via `pwdlib`.
 - Google ID tokens are verified against `GOOGLE_CLIENT_ID`; the Google verifier validates the signature, issuer, audience, and time claims. The backend additionally requires a verified email and stable subject.
-- Action tokens and refresh tokens are generated with a cryptographically secure random generator. Only SHA-256 hashes of these high-entropy tokens are persisted; plaintext tokens are sent once or returned once.
+- Action tokens and refresh tokens are generated with a cryptographically secure random generator. Authentication lookups persist SHA-256 hashes. Pending action emails additionally hold an authenticated encrypted copy of their action token for delivery retries; it is scrubbed after successful sending or cancellation. Refresh tokens are never stored reversibly.
 - JWT signing uses HS256 with `FIKRAH_JWT_SECRET`; the secret must contain at least 32 characters and must not be the public `.env.example` placeholder. API startup and token signing/verification reject unsafe values. Tokens include an issuer and a distinct access-token type.
 - Email responses are intentionally generic for registration, resend, and recovery. Request throttling is persisted in PostgreSQL.
 - PostgreSQL is the source of truth for account and session state. Cascading foreign keys remove authentication data when a user record is deleted.
@@ -72,7 +72,7 @@ The migration creates `users`, `projects`, `email_action_tokens`, `refresh_sessi
 
 ## Verification
 
-Authentication helper tests cover password hashing, JWT identity/type checks, and opaque-token hashing. API/database integration tests should be expanded as the application gains its PostgreSQL test service and mobile contract tests.
+Authentication tests cover password hashing, JWT claims and revocation, Google authority and linking, refresh replay, durable email retry, and tenant isolation. Opt-in PostgreSQL tests cover concurrent account creation, reset/refresh serialization, email claims, and the new migrations. These checks do not replace mobile integration or provider acceptance tests.
 
 ## References
 
@@ -91,3 +91,11 @@ Reusing a revoked refresh token commits revocation of its entire family before r
 Authentication mutations consistently lock the user before action/refresh records. Password verification and session issuance serialize with password reset, preventing a concurrent refresh from surviving reset.
 
 Migration `20261121_01` adds family IDs and retires all legacy refresh tokens. Existing access JWTs without `sid` are rejected; users must sign in again after this security upgrade. No existing migration is edited. Token response bodies and public route paths are unchanged.
+
+## Durable account emails
+
+Migration `20261121_02` adds `email_deliveries`. Registration, verification resend, password recovery, and first Google registration save their email intents in the same transaction as the account/action changes. Immediate sending happens after commit, outside any database transaction. SMTP or template failures leave the intent pending; Celery Beat invokes `app.workers.tasks.deliver_account_emails` at the configured worker dispatch interval.
+
+A sender claims a delivery for 60 seconds and fences acknowledgement with a unique claim token. Failures back off from 60 seconds up to one hour. Expired or retired action links are cancelled before sending. Sending is at least once: a crash after SMTP accepts a message but before acknowledgement can cause a duplicate. SMTP acceptance also does not guarantee arrival in the recipient's inbox.
+
+Pending action tokens use Fernet authenticated encryption, with a separate HKDF domain derived from the private `FIKRAH_JWT_SECRET`; no new environment variable is needed. Rotating that secret invalidates old encrypted pending links, so affected users must request a fresh verification/reset email. Neither raw tokens nor ciphertext appear in delivery logs. Retention of completed delivery records remains an operations decision.

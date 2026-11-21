@@ -145,6 +145,8 @@ async def test_first_google_requests_create_one_account(postgres_case, monkeypat
         pass
 
     service = AuthService(
+        protect_email_token=lambda token: token,
+        reveal_email_token=lambda token: token,
         send_action_email=discard,
         send_welcome_email=discard,
         google_client_id=lambda: "test-client",
@@ -224,6 +226,8 @@ async def test_password_reset_serializes_with_refresh(postgres_case, monkeypatch
         pass
 
     service = AuthService(
+        protect_email_token=lambda token: token,
+        reveal_email_token=lambda token: token,
         send_action_email=discard,
         send_welcome_email=discard,
         google_client_id=lambda: None,
@@ -319,3 +323,70 @@ def test_session_family_migration_retires_legacy_tokens(postgres_case):
         ).one()
         assert row.family_id == legacy_id
         assert row.revoked_at is not None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_email_delivery_claim_sends_once(postgres_case):
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.models import EmailDelivery
+    from app.services.email_delivery_service import EmailDeliveryService
+
+    engine, (user_id, _, _, _) = postgres_case
+    with engine.connect() as connection:
+        schema = connection.scalar(text("SELECT current_schema()"))
+    url = engine.url.set(drivername="postgresql+asyncpg", query={})
+    async_engine = create_async_engine(
+        url, connect_args={"server_settings": {"search_path": schema}}
+    )
+    sessions = async_sessionmaker(async_engine, expire_on_commit=False)
+    with Session(engine) as db:
+        delivery = EmailDelivery(
+            user_id=user_id, recipient="delivery@example.com", purpose="welcome"
+        )
+        db.add(delivery)
+        db.commit()
+        delivery_id = delivery.id
+    sending = asyncio.Event()
+    release = asyncio.Event()
+    sent = []
+
+    async def send(email):
+        sent.append(email)
+        sending.set()
+        await release.wait()
+
+    sender = EmailDeliveryService(send, send, lambda token: token)
+
+    async def deliver():
+        async with sessions() as db:
+            return await sender.deliver(db, delivery_id)
+
+    try:
+        first = asyncio.create_task(deliver())
+        await asyncio.wait_for(sending.wait(), timeout=5)
+        try:
+            assert not await asyncio.wait_for(deliver(), timeout=3)
+        finally:
+            release.set()
+        assert await asyncio.wait_for(first, timeout=3)
+        assert sent == ["delivery@example.com"]
+    finally:
+        await async_engine.dispose()
+
+
+def test_email_outbox_migration_creates_encrypted_delivery_table(postgres_case):
+    from importlib import import_module
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    engine, _ = postgres_case
+    revision = import_module("migrations.versions.20261121_02_add_account_email_outbox")
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE email_deliveries"))
+        with Operations.context(MigrationContext.configure(connection)):
+            revision.upgrade()
+        assert connection.scalar(text("SELECT count(*) FROM email_deliveries")) == 0

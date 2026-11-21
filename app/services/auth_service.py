@@ -1,10 +1,12 @@
 """Authentication application workflows and account lifecycle use cases."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
@@ -19,10 +21,11 @@ from app.core.security import (
     run_password_work,
     verify_password,
 )
-from app.models import EmailActionToken, Project, RefreshSession, User
+from app.models import EmailActionToken, EmailDelivery, Project, RefreshSession, User
 from app.repositories.auth import AuthRepository
+from app.repositories.email import EmailOutboxRepository
 from app.services.auth_errors import AuthServiceError
-from app.services.auth_ports import EmailDeliveryError, GoogleIdentityTokenError
+from app.services.auth_ports import GoogleIdentityTokenError
 from app.services.contracts.auth import (
     ActionToken,
     AuthMessage,
@@ -33,7 +36,10 @@ from app.services.contracts.auth import (
     PasswordReset,
     RefreshToken,
 )
+from app.services.email_delivery_service import EmailDeliveryService
 from app.services.request_budgets import RequestBudgetExceeded, RequestBudgetUnavailable
+
+logger = logging.getLogger(__name__)
 
 SendActionEmail = Callable[[str, str, str], Awaitable[None]]
 SendWelcomeEmail = Callable[[str], Awaitable[None]]
@@ -136,6 +142,8 @@ class AuthService:
         send_welcome_email: SendWelcomeEmail,
         verify_google_id_token: VerifyGoogleIdToken,
         google_client_id: GoogleClientId,
+        protect_email_token: Callable[[str], str],
+        reveal_email_token: Callable[[str], str],
         repository: AuthRepository | None = None,
         login_budget: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
@@ -143,8 +151,43 @@ class AuthService:
         self.send_welcome_email = send_welcome_email
         self.verify_google_id_token = verify_google_id_token
         self.google_client_id = google_client_id
+        self._protect_email_token = protect_email_token
+        self._reveal_email_token = reveal_email_token
+        self._email_repository = EmailOutboxRepository()
         self._repository = repository or AuthRepository()
         self._login_budget = login_budget
+
+    async def _queue_email(
+        self, db: AsyncSession, user: User, purpose: str, token: str | None = None
+    ) -> UUID:
+        delivery = EmailDelivery(
+            user_id=user.id,
+            recipient=user.email,
+            purpose=purpose,
+            token_hash=hash_opaque_token(token) if token is not None else None,
+            encrypted_token=self._protect_email_token(token)
+            if token is not None
+            else None,
+        )
+        await self._email_repository.add(db, delivery)
+        return delivery.id
+
+    async def _deliver_emails(self, db: AsyncSession, delivery_ids: list[UUID]) -> None:
+        sender = EmailDeliveryService(
+            self.send_action_email,
+            self.send_welcome_email,
+            self._reveal_email_token,
+            self._email_repository,
+        )
+        for delivery_id in delivery_ids:
+            try:
+                await sender.deliver(db, delivery_id)
+            except SQLAlchemyError:
+                await db.rollback()
+                logger.warning(
+                    "Email dispatch deferred after database error: delivery=%s",
+                    delivery_id,
+                )
 
     async def authenticated_user(
         self, db: AsyncSession, identity: AccessIdentity
@@ -183,7 +226,7 @@ class AuthService:
         return action, user
 
     async def register(self, body: EmailPassword, db: AsyncSession) -> AuthMessage:
-        raw_token: str | None = None
+        delivery_ids: list[UUID] = []
         async with db.begin():
             await self._repository.lock_account_creation(db, body.email)
             existing_user_id = await self._repository.find_user_id_by_email(
@@ -203,14 +246,11 @@ class AuthService:
                 raw_token = await _new_action_token(
                     db, user, "verify_email", timedelta(hours=24), self._repository
                 )
-        if raw_token is not None:
-            try:
-                await self.send_action_email(body.email, raw_token, "verify_email")
-                await self.send_welcome_email(body.email)
-            except EmailDeliveryError as exc:
-                raise _auth_error(
-                    503, "Email delivery is temporarily unavailable"
-                ) from exc
+                delivery_ids.append(
+                    await self._queue_email(db, user, "verify_email", raw_token)
+                )
+                delivery_ids.append(await self._queue_email(db, user, "welcome"))
+        await self._deliver_emails(db, delivery_ids)
         return AuthMessage(
             message="If the address can be registered, a verification email will be sent."
         )
@@ -228,7 +268,7 @@ class AuthService:
     async def resend_verification(
         self, body: EmailAddress, db: AsyncSession
     ) -> AuthMessage:
-        raw_token: str | None = None
+        delivery_ids: list[UUID] = []
         async with db.begin():
             user = await self._repository.find_user_by_email(db, body.email, lock=True)
             if (
@@ -239,13 +279,10 @@ class AuthService:
                 raw_token = await _new_action_token(
                     db, user, "verify_email", timedelta(hours=24), self._repository
                 )
-        if raw_token is not None:
-            try:
-                await self.send_action_email(body.email, raw_token, "verify_email")
-            except EmailDeliveryError as exc:
-                raise _auth_error(
-                    503, "Email delivery is temporarily unavailable"
-                ) from exc
+                delivery_ids.append(
+                    await self._queue_email(db, user, "verify_email", raw_token)
+                )
+        await self._deliver_emails(db, delivery_ids)
         return AuthMessage(
             message="If the address needs verification, an email will be sent."
         )
@@ -297,7 +334,7 @@ class AuthService:
         if not email or not subject or claims.get("email_verified") is not True:
             raise _auth_error(401, "Google account must have a verified email")
 
-        created_user = False
+        delivery_ids: list[UUID] = []
         async with db.begin():
             await self._repository.lock_account_creation(db, email, str(subject))
             subject_user = await self._repository.find_user_by_google_subject(
@@ -317,7 +354,6 @@ class AuthService:
                     409, "The Google identity is linked to a different email address"
                 )
             if user is None:
-                created_user = True
                 user = User(
                     email=email,
                     google_subject=subject,
@@ -327,6 +363,7 @@ class AuthService:
                 self._repository.add_project(
                     db, Project(user_id=user.id, name="General", is_general=True)
                 )
+                delivery_ids.append(await self._queue_email(db, user, "welcome"))
             elif user.google_subject not in (None, subject):
                 raise _auth_error(
                     409, "This account is linked to a different Google identity"
@@ -346,19 +383,13 @@ class AuthService:
                     timezone.utc
                 )
             tokens = await _issue_session(db, user, self._repository)
-        if created_user:
-            try:
-                await self.send_welcome_email(email)
-            except EmailDeliveryError as exc:
-                raise _auth_error(
-                    503, "Email delivery is temporarily unavailable"
-                ) from exc
+        await self._deliver_emails(db, delivery_ids)
         return tokens
 
     async def request_password_reset(
         self, body: EmailAddress, db: AsyncSession
     ) -> AuthMessage:
-        raw_token: str | None = None
+        delivery_ids: list[UUID] = []
         async with db.begin():
             user = await self._repository.find_user_by_email(db, body.email, lock=True)
             if (
@@ -369,13 +400,10 @@ class AuthService:
                 raw_token = await _new_action_token(
                     db, user, "reset_password", timedelta(hours=1), self._repository
                 )
-        if raw_token is not None:
-            try:
-                await self.send_action_email(body.email, raw_token, "reset_password")
-            except EmailDeliveryError as exc:
-                raise _auth_error(
-                    503, "Email delivery is temporarily unavailable"
-                ) from exc
+                delivery_ids.append(
+                    await self._queue_email(db, user, "reset_password", raw_token)
+                )
+        await self._deliver_emails(db, delivery_ids)
         return AuthMessage(
             message="If the account exists, a password reset email will be sent."
         )
