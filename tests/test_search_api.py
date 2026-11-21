@@ -212,3 +212,24 @@ async def test_search_rejects_blank_queries(search_api) -> None:
         json={"query": "   "},
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_releases_database_transactions_during_provider_calls(search_api):
+    from app.services.search_service import SemanticSearchService
+
+    _, sessions, owner_id, _, project_id, note_id, *_ = search_api
+    async with sessions() as db:
+        class Embeddings:
+            def embed_query(self, query):
+                assert not db.in_transaction()
+                return [0.1, 0.2]
+
+        def vectors(*_):
+            assert not db.in_transaction()
+            return [(note_id, 2, 0.9)]
+
+        service = SemanticSearchService(lambda: Embeddings(), vectors)
+        matches = await service.retrieve(db, owner_id, project_id, "A question", 10)
+        assert matches[0].note_id == note_id
+        assert not db.in_transaction()

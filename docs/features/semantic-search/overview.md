@@ -41,3 +41,5 @@ The search service returns framework-independent `SearchMatch` results from `app
 ## Verification
 
 Tests cover Gemini retrieval task selection, project ownership, query normalization, and omission of stale, processing, and cross-user results.
+
+Search releases its ownership-check read transaction before embedding/vector calls, then validates candidates in a fresh PostgreSQL read transaction and closes it before returning. Chat therefore receives detached result contracts and does not retain a database connection during answer generation.
