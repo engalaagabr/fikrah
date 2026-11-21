@@ -35,7 +35,10 @@ class WorkerNoteProcessingRepository:
                 job.status == "processing"
                 and job.worker_task_id != worker_task_id
                 and job.started_at is not None
-                and job.started_at > stale_before
+                and (
+                    job.started_at.replace(tzinfo=timezone.utc)
+                    if job.started_at.tzinfo is None else job.started_at
+                ) > stale_before
             ):
                 return None
             note = session.scalar(
@@ -63,6 +66,7 @@ class WorkerNoteProcessingRepository:
                 revision=note.revision,
                 processing_generation=note.processing_generation,
                 content=note.content,
+                attempt_token=worker_task_id,
             )
 
     def complete_if_current(
@@ -87,7 +91,11 @@ class WorkerNoteProcessingRepository:
             note = session.scalar(
                 select(Note).where(Note.id == snapshot.note_id).with_for_update()
             )
-            if job is None:
+            if (
+                job is None
+                or job.status != "processing"
+                or job.worker_task_id != snapshot.attempt_token
+            ):
                 return False
             if (
                 note is None
@@ -109,16 +117,27 @@ class WorkerNoteProcessingRepository:
             job.status = "completed"
             return True
 
-    def mark_failed(self, job_id: UUID) -> None:
+    def fail_if_current(
+        self, snapshot: NoteProcessingSnapshot, *, terminal: bool
+    ) -> bool:
         with self._sessions.begin() as session:
-            job = session.get(NoteProcessingJob, job_id)
-            if job is None:
-                return
-            note = session.get(Note, job.note_id)
-            job.status = "failed"
+            job = session.get(NoteProcessingJob, snapshot.job_id, with_for_update=True)
+            if (
+                job is None
+                or job.status != "processing"
+                or job.worker_task_id != snapshot.attempt_token
+            ):
+                return False
+            note = session.get(Note, job.note_id, with_for_update=True)
             if (
                 note is not None
                 and note.revision == job.revision
                 and note.processing_generation == job.processing_generation
             ):
-                note.processing_status = "failed"
+                job.status = "failed" if terminal else "queued"
+                note.processing_status = job.status
+            else:
+                job.status = "stale"
+            job.worker_task_id = None
+            job.started_at = None
+            return True

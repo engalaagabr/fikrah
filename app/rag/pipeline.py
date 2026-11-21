@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.llm.contracts import NoteAnalysis
 from app.llm.ports import EmbeddingModel, StructuredTextGenerator
@@ -20,6 +20,7 @@ class NoteProcessingSnapshot:
     revision: int
     processing_generation: int
     content: str
+    attempt_token: str
 
 
 class NoteProcessingRepository(Protocol):
@@ -32,6 +33,10 @@ class NoteProcessingRepository(Protocol):
         snapshot: NoteProcessingSnapshot,
         analysis: NoteAnalysis,
         persist_vector: Callable[[], None],
+    ) -> bool: ...
+
+    def fail_if_current(
+        self, snapshot: NoteProcessingSnapshot, *, terminal: bool
     ) -> bool: ...
 
 
@@ -63,27 +68,33 @@ class NoteProcessingService:
         self._embedding_model_factory = embedding_model_factory
         self._stale_processing_after = stale_processing_after
 
-    def process(self, job_id: UUID, worker_task_id: str) -> None:
+    def process(
+        self, job_id: UUID, worker_task_id: str, *, terminal_on_error: bool = False
+    ) -> None:
         now = datetime.now(timezone.utc)
         snapshot = self._repository.claim(
             job_id,
-            worker_task_id,
+            f"{worker_task_id}:{uuid4()}",
             now - self._stale_processing_after,
         )
         if snapshot is None:
             return
 
-        analysis = analyze_note(self._text_generator_factory(), snapshot.content)
-        embedding = self._embedding_model_factory().embed_note(snapshot.content)
+        try:
+            analysis = analyze_note(self._text_generator_factory(), snapshot.content)
+            embedding = self._embedding_model_factory().embed_note(snapshot.content)
 
-        def persist_vector() -> None:
-            self._vector_store.upsert_note(
-                snapshot.note_id,
-                embedding,
-                user_id=snapshot.user_id,
-                project_id=snapshot.project_id,
-                revision=snapshot.revision,
-                processing_generation=snapshot.processing_generation,
-            )
+            def persist_vector() -> None:
+                self._vector_store.upsert_note(
+                    snapshot.note_id,
+                    embedding,
+                    user_id=snapshot.user_id,
+                    project_id=snapshot.project_id,
+                    revision=snapshot.revision,
+                    processing_generation=snapshot.processing_generation,
+                )
 
-        self._repository.complete_if_current(snapshot, analysis, persist_vector)
+            self._repository.complete_if_current(snapshot, analysis, persist_vector)
+        except Exception:
+            self._repository.fail_if_current(snapshot, terminal=terminal_on_error)
+            raise
