@@ -5,7 +5,7 @@ This phase addresses the architecture/security review of commit `0975d0f`. Fixes
 | Finding | Status |
 | --- | --- |
 | F01: unverified password survives Google linking | Fixed; regression verifies the old password and pending action links cannot be used after linking. Already verified passwords remain usable. |
-| F02: non-authoritative Google email linking | Policy approved; implementation pending. |
+| F02: non-authoritative Google email linking | Fixed under the approved Gmail/Workspace authority policy; previously linked subjects remain usable. |
 | F03/F04: login, request, and content budgets | Proposed limits approved; implementation pending. |
 | F05: worker attempt ownership | Fixed; unique attempt tokens fence completion and failure, and retries release only their own claim. |
 | F06: worker lock order | Fixed; note locks precede job locks, dispatcher skips locked notes, and deletion shares project coordination with graph/vector completion. Two real PostgreSQL regressions pass. |

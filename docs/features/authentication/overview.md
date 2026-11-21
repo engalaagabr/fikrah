@@ -9,7 +9,7 @@ This feature implements the first mobile-facing account API for the FastAPI back
 - Users can register and sign in with email/password or Google.
 - Email/password users must verify their email before signing in.
 - The mobile client sends a Google ID token. The backend verifies it and issues FIKRAH tokens.
-- A verified Google email is automatically linked to an existing account with the same normalized email.
+- Automatic Google account creation/linking requires a verified Gmail address or verified Workspace identity with `hd`. A non-authoritative external email returns `401` for a new Google subject. An already linked subject can continue signing in, subject to the existing identity/email checks.
 - Linking an unverified local account discards its unverified password and retires pending verification/reset links. Google sign-in must never activate a password chosen before mailbox ownership was established. Passwords on already verified local accounts are preserved.
 - Every new account receives a protected `General` project.
 - Access tokens are JWTs valid for 15 minutes. Refresh tokens are opaque, valid for 30 days, rotated on use, and revocable in PostgreSQL.

@@ -245,6 +245,13 @@ class AuthService:
             subject_user = await self._repository.find_user_by_google_subject(
                 db, subject
             )
+            authoritative_email = email.endswith("@gmail.com") or (
+                isinstance(claims.get("hd"), str) and bool(claims["hd"].strip())
+            )
+            if subject_user is None and not authoritative_email:
+                raise _auth_error(
+                    401, "Google cannot establish current ownership of this email address"
+                )
             user = await self._repository.find_user_by_email(
                 db, email, lock=True
             )

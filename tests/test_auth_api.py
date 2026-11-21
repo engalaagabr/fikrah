@@ -91,6 +91,7 @@ async def test_email_auth_verification_refresh_and_logout(
             "sub": "linked-google-subject",
             "email": email.lower(),
             "email_verified": True,
+            "hd": "example.com",
         },
     )
     linked_google_login = await auth_client.post(
@@ -169,6 +170,7 @@ async def test_google_link_discards_unverified_local_password(
             "sub": "actual-mailbox-owner",
             "email": "pre-registered@gmail.com",
             "email_verified": True,
+            "hd": "example.com",
         },
     )
     credentials = {
@@ -207,6 +209,7 @@ async def test_google_login_requires_verified_email_and_issues_fikrah_tokens(
             "sub": "google-user-1",
             "email": "google.user@example.com",
             "email_verified": True,
+            "hd": "example.com",
         }
 
     monkeypatch.setattr(
@@ -338,3 +341,46 @@ async def test_resend_verification_replaces_previous_link(
     )
     assert old_link.status_code == 400
     assert new_link.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_google_external_email_cannot_create_account(auth_client, monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.verify_google_id_token",
+        lambda *_: {
+            "sub": "untrusted-external-subject", "email": "outside@example.com",
+            "email_verified": True,
+        },
+    )
+    response = await auth_client.post(
+        "/v1/auth/google", json={"id_token": "google-token-with-non-authoritative-email"}
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_previously_linked_subject_can_sign_in_without_email_authority(
+    auth_client, monkeypatch
+):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "mobile-client-id")
+    claims = {
+        "sub": "previously-linked", "email": "linked@example.com",
+        "email_verified": True, "hd": "example.com",
+    }
+    monkeypatch.setattr(
+        "app.infrastructure.container.auth_service.verify_google_id_token",
+        lambda *_: dict(claims),
+    )
+    async def welcome(_):
+        pass
+    monkeypatch.setattr("app.infrastructure.container.auth_service.send_welcome_email", welcome)
+    first = await auth_client.post(
+        "/v1/auth/google", json={"id_token": "google-token-for-the-linked-account"}
+    )
+    assert first.status_code == 200
+    claims.pop("hd")
+    second = await auth_client.post(
+        "/v1/auth/google", json={"id_token": "google-token-for-the-linked-account"}
+    )
+    assert second.status_code == 200
