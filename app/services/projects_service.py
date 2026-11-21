@@ -58,6 +58,10 @@ class ProjectService:
     async def delete_project(
         self, db: AsyncSession, user_id: UUID, project_id: UUID
     ) -> None:
+        project = await self._repository.find_owned(db, user_id, project_id)
+        if project is None:
+            raise ProjectNotFound
+        await self._repository.lock_project_processing(db, project_id)
         project = await self._repository.find_owned(db, user_id, project_id, lock=True)
         if project is None:
             raise ProjectNotFound

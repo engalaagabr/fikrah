@@ -64,3 +64,5 @@ Only one Beat scheduler should run for this initial deployment command.
 ## Worker attempt ownership
 
 Each processing invocation claims a unique attempt token, including Celery retries that reuse a task ID. Completion and failure require the active token and processing status. A stale attempt cannot overwrite a successful result or mark it failed. Transient failures release only their own claim for retry; terminal failures change state only if that attempt still owns it.
+
+API deletion, processing claims/completion, failure handling, and dispatch recovery acquire note locks before job locks. Deletion and worker completion also share the project advisory lock, so graph updates and vector writes cannot race deletion. PostgreSQL concurrency tests can be enabled using `FIKRAH_TEST_DATABASE_URL` pointing at a dedicated database whose name ends in `_test`; every case creates and removes its own schema.

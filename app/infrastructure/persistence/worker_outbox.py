@@ -27,28 +27,34 @@ class WorkerOutboxRepository:
         job_ids: list[UUID] = []
         cleanup_ids: list[UUID] = []
         with self._sessions.begin() as session:
-            jobs = session.scalars(
-                select(NoteProcessingJob)
-                .where(
-                    or_(
-                        (NoteProcessingJob.status == "queued")
-                        & (
-                            NoteProcessingJob.dispatched_at.is_(None)
-                            | (
-                                NoteProcessingJob.dispatched_at
-                                < now - stale_dispatch_after
-                            )
-                        ),
-                        (NoteProcessingJob.status == "processing")
-                        & (NoteProcessingJob.started_at < now - stale_processing_after),
-                    )
-                )
+            pending = or_(
+                (NoteProcessingJob.status == "queued")
+                & (
+                    NoteProcessingJob.dispatched_at.is_(None)
+                    | (NoteProcessingJob.dispatched_at < now - stale_dispatch_after)
+                ),
+                (NoteProcessingJob.status == "processing")
+                & (NoteProcessingJob.started_at < now - stale_processing_after),
+            )
+            candidates = session.execute(
+                select(NoteProcessingJob.id, NoteProcessingJob.note_id)
+                .where(pending)
+                .order_by(NoteProcessingJob.created_at, NoteProcessingJob.id)
                 .limit(batch_size)
-                .with_for_update(skip_locked=True)
             ).all()
-            for job in jobs:
+            for job_id, note_id in candidates:
+                # Match API deletion and worker claim: note first, then job.
+                note = session.get(Note, note_id, with_for_update={"skip_locked": True})
+                if note is None:
+                    continue
+                job = session.scalar(
+                    select(NoteProcessingJob)
+                    .where(NoteProcessingJob.id == job_id, pending)
+                    .with_for_update(skip_locked=True)
+                )
+                if job is None:
+                    continue
                 if job.status == "processing":
-                    note = session.get(Note, job.note_id)
                     if (
                         note is not None
                         and note.revision == job.revision
@@ -57,6 +63,7 @@ class WorkerOutboxRepository:
                         note.processing_status = "queued"
                     job.status = "queued"
                     job.worker_task_id = None
+                    job.started_at = None
                 job.dispatched_at = now
                 job.attempt_count += 1
                 job_ids.append(job.id)

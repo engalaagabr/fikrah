@@ -4,8 +4,9 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 
+from app.db.locks import PROJECT_PROCESSING_LOCK
 from app.db.worker_session import create_worker_session_factory
 from app.llm.contracts import NoteAnalysis
 from app.models import Note, NoteProcessingJob
@@ -24,6 +25,12 @@ class WorkerNoteProcessingRepository:
         self, job_id: UUID, worker_task_id: str, stale_before: datetime
     ) -> NoteProcessingSnapshot | None:
         with self._sessions.begin() as session:
+            note_id = session.scalar(
+                select(NoteProcessingJob.note_id).where(NoteProcessingJob.id == job_id)
+            )
+            if note_id is None:
+                return None
+            note = session.get(Note, note_id, with_for_update=True)
             job = session.scalar(
                 select(NoteProcessingJob)
                 .where(NoteProcessingJob.id == job_id)
@@ -41,9 +48,6 @@ class WorkerNoteProcessingRepository:
                 ) > stale_before
             ):
                 return None
-            note = session.scalar(
-                select(Note).where(Note.id == job.note_id).with_for_update()
-            )
             if (
                 note is None
                 or note.revision != job.revision
@@ -78,18 +82,16 @@ class WorkerNoteProcessingRepository:
         with self._sessions.begin() as session:
             if session.get_bind().dialect.name == "postgresql":
                 session.execute(
-                    text(
-                        "SELECT pg_advisory_xact_lock(hashtextextended(:project_id, 0))"
-                    ),
+                    PROJECT_PROCESSING_LOCK,
                     {"project_id": str(snapshot.project_id)},
                 )
+            note = session.scalar(
+                select(Note).where(Note.id == snapshot.note_id).with_for_update()
+            )
             job = session.scalar(
                 select(NoteProcessingJob)
                 .where(NoteProcessingJob.id == snapshot.job_id)
                 .with_for_update()
-            )
-            note = session.scalar(
-                select(Note).where(Note.id == snapshot.note_id).with_for_update()
             )
             if (
                 job is None
@@ -121,6 +123,7 @@ class WorkerNoteProcessingRepository:
         self, snapshot: NoteProcessingSnapshot, *, terminal: bool
     ) -> bool:
         with self._sessions.begin() as session:
+            note = session.get(Note, snapshot.note_id, with_for_update=True)
             job = session.get(NoteProcessingJob, snapshot.job_id, with_for_update=True)
             if (
                 job is None
@@ -128,7 +131,6 @@ class WorkerNoteProcessingRepository:
                 or job.worker_task_id != snapshot.attempt_token
             ):
                 return False
-            note = session.get(Note, job.note_id, with_for_update=True)
             if (
                 note is not None
                 and note.revision == job.revision

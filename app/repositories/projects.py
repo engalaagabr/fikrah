@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.locks import lock_project_processing
 from app.models import (
     ChatConversation,
     ChatMessage,
@@ -18,6 +19,9 @@ from app.models import (
 
 
 class ProjectRepository:
+    async def lock_project_processing(self, db: AsyncSession, project_id: UUID) -> None:
+        await lock_project_processing(db, project_id)
+
     async def refresh(self, db: AsyncSession, project: Project) -> None:
         await db.refresh(project)
 
@@ -51,7 +55,10 @@ class ProjectRepository:
 
     async def delete_with_owned_data(self, db: AsyncSession, project: Project) -> None:
         note_ids = list(
-            await db.scalars(select(Note.id).where(Note.project_id == project.id))
+            await db.scalars(
+                select(Note.id).where(Note.project_id == project.id)
+                .order_by(Note.id).with_for_update()
+            )
         )
         db.add_all(VectorCleanupRequest(note_id=note_id) for note_id in note_ids)
 

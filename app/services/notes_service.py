@@ -244,6 +244,8 @@ class NoteService:
         return self._result(note)
 
     async def delete_note(self, db: AsyncSession, user_id: UUID, note_id: UUID) -> None:
+        note = await self._owned_note(db, user_id, note_id)
+        await self._repository.lock_project_processing(db, note.project_id)
         note = await self._owned_note(db, user_id, note_id, lock=True)
         await self._repository.delete_with_owned_data(db, note)
         await db.commit()
