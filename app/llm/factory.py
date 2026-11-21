@@ -1,14 +1,26 @@
 """Application composition for configured LLM ports."""
 
 from app.core.config import get_settings
-from app.llm.ports import StructuredTextGenerator
+from app.llm.ports import AudioTranscriber, StructuredTextGenerator
 from app.llm.providers.deepseek import DeepSeekTextGenerator
 from app.llm.providers.gemini import GeminiTextGenerator
+from app.llm.providers.gemini_transcription import GeminiAudioTranscriber
 from app.llm.providers.openrouter import OpenRouterTextGenerator
 
 
 class LLMProviderFactory:
-    """Build the configured text-generation adapter."""
+    """Build fresh provider clients for each supported capability."""
+
+    @staticmethod
+    def create_audio_transcriber() -> AudioTranscriber:
+        settings = get_settings()
+        if not settings.gemini_api_key:
+            raise RuntimeError("GEMINI_API_KEY is required for audio transcription")
+        return GeminiAudioTranscriber(
+            settings.gemini_api_key,
+            settings.gemini_transcription_model,
+            mode="smart",
+        )
 
     @staticmethod
     def create_text_generator(provider: str | None = None) -> StructuredTextGenerator:
