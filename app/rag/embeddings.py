@@ -15,6 +15,9 @@ class GeminiEmbeddingModel:
             api_key=api_key, http_options=types.HttpOptions(timeout=90_000)
         )
 
+    def close(self) -> None:
+        self._client.close()
+
     def embed_note(self, content: str) -> list[float]:
         return self._embed(content, "RETRIEVAL_DOCUMENT")
 
@@ -35,6 +38,7 @@ class GeminiEmbeddingModel:
 
 
 def create_embedding_model() -> EmbeddingModel:
+    """Return a fresh embedding model whose client must be closed by its caller."""
     settings = get_settings()
     api_key = settings.gemini_api_key
     if not api_key:

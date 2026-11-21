@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contracts.search import SearchMatch
+from app.llm.lifecycle import run_with_provider
 from app.llm.ports import EmbeddingModel
 from app.rag.errors import SearchUnavailableError
 from app.repositories.search import SearchRepository
@@ -27,8 +28,11 @@ async def retrieve_current_notes(
 ) -> list[SearchMatch]:
     """Return only vector matches still current and accessible in PostgreSQL."""
     try:
-        embedding_model = embedding_model_factory()
-        query_vector = await asyncio.to_thread(embedding_model.embed_query, query)
+        query_vector = await asyncio.to_thread(
+            run_with_provider,
+            embedding_model_factory,
+            lambda model: model.embed_query(query),
+        )
         matches = await asyncio.to_thread(
             vector_search, query_vector, user_id, project_id, limit
         )

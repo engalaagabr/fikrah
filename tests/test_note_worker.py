@@ -23,6 +23,9 @@ from app.workers.tasks import process_note_job
 
 
 class FakeStructuredTextGenerator:
+    def close(self) -> None:
+        pass
+
     def generate_structured(
         self,
         *,
@@ -40,6 +43,9 @@ class FakeStructuredTextGenerator:
 
 
 class FakeEmbeddingModel:
+    def close(self) -> None:
+        pass
+
     def embed_note(self, content: str) -> list[float]:
         assert content == "Original thought"
         return [0.1, 0.2, 0.3]

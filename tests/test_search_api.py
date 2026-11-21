@@ -117,6 +117,9 @@ async def search_api(
 
 
 class FakeEmbeddingModel:
+    def close(self) -> None:
+        pass
+
     def __init__(self) -> None:
         self.queries: list[str] = []
 
@@ -221,6 +224,9 @@ async def test_search_releases_database_transactions_during_provider_calls(searc
     _, sessions, owner_id, _, project_id, note_id, *_ = search_api
     async with sessions() as db:
         class Embeddings:
+            def close(self):
+                pass
+
             def embed_query(self, query):
                 assert not db.in_transaction()
                 return [0.1, 0.2]

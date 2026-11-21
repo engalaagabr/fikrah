@@ -13,6 +13,9 @@ class OpenAICompatibleStructuredTextGenerator:
         self._provider_name = provider_name
         self._client = OpenAI(api_key=api_key, base_url=base_url, timeout=90)
 
+    def close(self) -> None:
+        self._client.close()
+
     def generate_structured(
         self,
         *,

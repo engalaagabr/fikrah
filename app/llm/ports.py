@@ -7,7 +7,11 @@ from pydantic import BaseModel
 StructuredResult = TypeVar("StructuredResult", bound=BaseModel)
 
 
-class StructuredTextGenerator(Protocol):
+class CloseableProvider(Protocol):
+    def close(self) -> None: ...
+
+
+class StructuredTextGenerator(CloseableProvider, Protocol):
     def generate_structured(
         self,
         *,
@@ -17,7 +21,7 @@ class StructuredTextGenerator(Protocol):
     ) -> StructuredResult: ...
 
 
-class EmbeddingModel(Protocol):
+class EmbeddingModel(CloseableProvider, Protocol):
     def embed_note(self, content: str) -> list[float]: ...
 
     def embed_query(self, query: str) -> list[float]: ...

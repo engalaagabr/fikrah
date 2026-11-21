@@ -17,6 +17,7 @@ from app.contracts.chat import (
     SourceReference,
 )
 from app.llm.contracts import ChatHistoryMessage, ChatNoteContext
+from app.llm.lifecycle import run_with_provider
 from app.llm.ports import StructuredTextGenerator
 from app.llm.use_cases import answer_project_question
 from app.models import ChatConversation, ChatMessage, Project
@@ -171,13 +172,12 @@ class ChatService:
         ]
         matching_revisions = {match.note_id: match.revision for match in matches}
         try:
-            text_generator = self._text_generator_factory()
             answer = await asyncio.to_thread(
-                answer_project_question,
-                text_generator,
-                body.content,
-                note_context,
-                history,
+                run_with_provider,
+                self._text_generator_factory,
+                lambda generator: answer_project_question(
+                    generator, body.content, note_context, history
+                ),
             )
         except Exception as error:
             raise ChatServiceError(
@@ -235,11 +235,11 @@ class ChatService:
             await db.rollback()
             try:
                 refusal = await asyncio.to_thread(
-                    answer_project_question,
-                    text_generator,
-                    body.content,
-                    [],
-                    history,
+                    run_with_provider,
+                    self._text_generator_factory,
+                    lambda generator: answer_project_question(
+                        generator, body.content, [], history
+                    ),
                 )
             except Exception as error:
                 raise ChatServiceError(

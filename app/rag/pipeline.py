@@ -4,6 +4,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
+from app.llm.lifecycle import run_with_provider
 from app.llm.ports import EmbeddingModel, StructuredTextGenerator
 from app.llm.use_cases import analyze_note
 from app.rag.ports import NoteProcessingRepository, NoteVectorStore
@@ -37,8 +38,14 @@ class NoteProcessingService:
             return
 
         try:
-            analysis = analyze_note(self._text_generator_factory(), snapshot.content)
-            embedding = self._embedding_model_factory().embed_note(snapshot.content)
+            analysis = run_with_provider(
+                self._text_generator_factory,
+                lambda generator: analyze_note(generator, snapshot.content),
+            )
+            embedding = run_with_provider(
+                self._embedding_model_factory,
+                lambda model: model.embed_note(snapshot.content),
+            )
 
             def persist_vector() -> None:
                 self._vector_store.upsert_note(

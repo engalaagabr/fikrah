@@ -12,6 +12,7 @@ class LLMProviderFactory:
 
     @staticmethod
     def create_text_generator(provider: str | None = None) -> StructuredTextGenerator:
+        """Return a fresh generator; the caller owns and must close its client."""
         settings = get_settings()
         selected = (provider or settings.llm_text_provider).strip().lower()
         if selected == "deepseek":
