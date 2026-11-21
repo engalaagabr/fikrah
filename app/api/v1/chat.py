@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app.api.deps import AuthenticatedUser, ChatServiceDependency, Db
+from app.api.deps import AuthenticatedUser, ChatServiceDependency, Db, LLMRequestBudget
 from app.schemas.chat import (
     ConversationCreate,
     ConversationDetail,
@@ -92,6 +92,7 @@ async def send_message(
     body: MessageCreate,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: ChatServiceDependency,
 ) -> MessageSubmission:
     submission = await _execute(

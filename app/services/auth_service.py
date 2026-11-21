@@ -11,10 +11,12 @@ from app.core.security import (
     DUMMY_PASSWORD_HASH,
     REFRESH_TOKEN_TTL,
     AccessIdentity,
+    PasswordWorkBusy,
     create_access_token,
     hash_opaque_token,
     hash_password,
     new_opaque_token,
+    run_password_work,
     verify_password,
 )
 from app.models import EmailActionToken, Project, RefreshSession, User
@@ -31,6 +33,7 @@ from app.services.contracts.auth import (
     PasswordReset,
     RefreshToken,
 )
+from app.services.request_budgets import RequestBudgetExceeded, RequestBudgetUnavailable
 
 SendActionEmail = Callable[[str, str, str], Awaitable[None]]
 SendWelcomeEmail = Callable[[str], Awaitable[None]]
@@ -46,6 +49,15 @@ def _auth_error(
 
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+async def _password_work(operation: Callable, *args):
+    try:
+        return await run_password_work(operation, *args)
+    except PasswordWorkBusy as error:
+        raise _auth_error(
+            429, "Password processing is busy", headers={"Retry-After": "1"}
+        ) from error
 
 
 async def _send_limit_available(
@@ -125,12 +137,14 @@ class AuthService:
         verify_google_id_token: VerifyGoogleIdToken,
         google_client_id: GoogleClientId,
         repository: AuthRepository | None = None,
+        login_budget: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self.send_action_email = send_action_email
         self.send_welcome_email = send_welcome_email
         self.verify_google_id_token = verify_google_id_token
         self.google_client_id = google_client_id
         self._repository = repository or AuthRepository()
+        self._login_budget = login_budget
 
     async def authenticated_user(
         self, db: AsyncSession, identity: AccessIdentity
@@ -180,7 +194,7 @@ class AuthService:
             ):
                 user = User(
                     email=body.email,
-                    password_hash=await asyncio.to_thread(hash_password, body.password),
+                    password_hash=await _password_work(hash_password, body.password),
                 )
                 await self._repository.add_user(db, user)
                 self._repository.add_project(
@@ -237,15 +251,26 @@ class AuthService:
         )
 
     async def login(self, body: EmailPassword, db: AsyncSession) -> AuthTokenPair:
+        if self._login_budget is not None:
+            try:
+                await self._login_budget(body.email)
+            except RequestBudgetExceeded as error:
+                raise _auth_error(
+                    429,
+                    "Too many login attempts",
+                    headers={"Retry-After": str(error.retry_after)},
+                ) from error
+            except RequestBudgetUnavailable as error:
+                raise _auth_error(
+                    503, "Authentication is temporarily unavailable"
+                ) from error
         user = await self._repository.find_user_by_email(db, body.email, lock=True)
         if user is None or user.password_hash is None:
-            await asyncio.to_thread(verify_password, body.password, DUMMY_PASSWORD_HASH)
+            await _password_work(verify_password, body.password, DUMMY_PASSWORD_HASH)
             raise _auth_error(
                 401, "Invalid email or password", headers={"WWW-Authenticate": "Bearer"}
             )
-        if not await asyncio.to_thread(
-            verify_password, body.password, user.password_hash
-        ):
+        if not await _password_work(verify_password, body.password, user.password_hash):
             raise _auth_error(
                 401, "Invalid email or password", headers={"WWW-Authenticate": "Bearer"}
             )
@@ -364,9 +389,7 @@ class AuthService:
                 db, body.token, "reset_password"
             )
             action.used_at = now
-            user.password_hash = await asyncio.to_thread(
-                hash_password, body.new_password
-            )
+            user.password_hash = await _password_work(hash_password, body.new_password)
             await self._repository.revoke_active_refresh_sessions(db, user.id, now)
         return AuthMessage(message="Password reset successfully")
 

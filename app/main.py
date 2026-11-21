@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.body_limits import RequestBodyLimitMiddleware
 from app.api.v1.auth import router as auth_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.connections import router as connections_router
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="FIKRAH API", lifespan=lifespan)
+app.add_middleware(RequestBodyLimitMiddleware)
 app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(notes_router)

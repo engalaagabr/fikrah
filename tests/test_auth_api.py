@@ -429,3 +429,22 @@ async def test_refresh_replay_commits_revocation_of_active_replacement(auth_clie
     assert (await auth_client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})).status_code == 401
     assert (await auth_client.post("/v1/auth/refresh", json={"refresh_token": replacement["refresh_token"]})).status_code == 401
     assert (await auth_client.get("/v1/auth/me", headers={"Authorization": f"Bearer {replacement['access_token']}"})).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_budget_blocks_before_password_verification(auth_client, monkeypatch):
+    from app.infrastructure.container import request_budgets
+    from app.services.request_budgets import RequestBudgetExceeded
+
+    counts = {}
+    async def consume(key, limit, window):
+        counts[key] = counts.get(key, 0) + 1
+        if counts[key] > limit:
+            raise RequestBudgetExceeded(60)
+
+    monkeypatch.setattr(request_budgets._store, "consume", consume)
+    for _ in range(5):
+        assert (await auth_client.post("/v1/auth/login", json={"email": "unknown@example.com", "password": "a wrong password for budget test"})).status_code == 401
+    blocked = await auth_client.post("/v1/auth/login", json={"email": "unknown@example.com", "password": "a wrong password for budget test"})
+    assert blocked.status_code == 429
+    assert blocked.headers["retry-after"] == "60"

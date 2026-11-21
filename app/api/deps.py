@@ -16,6 +16,7 @@ from app.services.chat_service import ChatService
 from app.services.connections_service import KnowledgeConnectionService
 from app.services.notes_service import NoteService
 from app.services.projects_service import ProjectService
+from app.services.request_budgets import RequestBudgetExceeded, RequestBudgetUnavailable
 from app.services.search_service import SemanticSearchService
 
 bearer = HTTPBearer(auto_error=False)
@@ -58,6 +59,26 @@ async def current_user(
 
 
 AuthenticatedUser = Annotated[User, Depends(current_user)]
+
+
+async def enforce_llm_budget(user: AuthenticatedUser) -> None:
+    from app.infrastructure.container import request_budgets
+
+    try:
+        await request_budgets.llm(user.id)
+    except RequestBudgetExceeded as error:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many LLM requests",
+            headers={"Retry-After": str(error.retry_after)},
+        ) from error
+    except RequestBudgetUnavailable as error:
+        raise HTTPException(
+            status_code=503, detail="Request budget is unavailable"
+        ) from error
+
+
+LLMRequestBudget = Annotated[None, Depends(enforce_llm_budget)]
 
 
 def get_chat_service() -> ChatService:

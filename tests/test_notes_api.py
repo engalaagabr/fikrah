@@ -116,7 +116,7 @@ async def test_note_create_retry_update_poll_and_delete(
     retry = await client.post(f"/v1/notes/{note['id']}/processing-retries", headers=headers)
     assert retry.status_code == 202
     assert retry.json()["revision"] == 2
-    assert retry.json()["processing_generation"] == 3
+    assert retry.json()["processing_generation"] == 2
 
     deleted = await client.delete(f"/v1/notes/{note['id']}", headers=headers)
     assert deleted.status_code == 204
@@ -426,3 +426,32 @@ async def test_note_connections_and_graph_are_project_and_user_scoped(
             headers={"Authorization": f"Bearer {other_token}"},
         )
     ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_llm_budget_and_repeated_processing_retry(note_api, monkeypatch):
+    from app.infrastructure.container import request_budgets
+    from app.services.request_budgets import RequestBudgetExceeded
+
+    client, sessions, _, _, project_id, _, token, _ = note_api
+    monkeypatch.setenv("FIKRAH_LLM_LIMIT_PER_MINUTE", "3")
+    counts = {}
+    async def consume(key, limit, window):
+        counts[key] = counts.get(key, 0) + 1
+        if counts[key] > limit:
+            raise RequestBudgetExceeded(45)
+    monkeypatch.setattr(request_budgets._store, "consume", consume)
+    headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": "limited-note"}
+    created = await client.post(f"/v1/projects/{project_id}/notes", headers=headers, json={"content": "A bounded note"})
+    assert created.status_code == 201
+    note = created.json()
+    for _ in range(2):
+        retry = await client.post(f"/v1/notes/{note['id']}/processing-retries", headers=headers)
+        assert retry.status_code == 202
+        assert retry.json()["processing_generation"] == note["processing_generation"]
+    blocked = await client.post(f"/v1/notes/{note['id']}/processing-retries", headers=headers)
+    assert blocked.status_code == 429
+    assert blocked.headers["retry-after"] == "45"
+    assert (await client.get(f"/v1/notes/{note['id']}", headers=headers)).status_code == 200
+    async with sessions() as db:
+        assert await db.scalar(select(func.count(NoteProcessingJob.id))) == 1

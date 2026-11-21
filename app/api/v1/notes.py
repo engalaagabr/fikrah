@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
 
-from app.api.deps import AuthenticatedUser, Db, NoteServiceDependency
+from app.api.deps import AuthenticatedUser, Db, LLMRequestBudget, NoteServiceDependency
 from app.schemas.notes import (
     NoteCreate,
     NoteUpdate,
@@ -62,6 +62,7 @@ async def create_note(
     body: NoteCreate,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
     idempotency_key: Annotated[
         str, Header(alias="Idempotency-Key", min_length=1, max_length=128)
@@ -107,6 +108,7 @@ async def update_note(
     body: NoteUpdate,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
 ) -> NoteView:
     command = NoteUpdateCommand(
@@ -127,6 +129,7 @@ async def retry_note_processing(
     note_id: UUID,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(service.retry_processing(db, user.id, note_id))
@@ -143,6 +146,7 @@ async def regenerate_refinement(
     body: ProposalAction,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(
@@ -186,6 +190,7 @@ async def accept_refinement(
     body: ProposalAction,
     user: AuthenticatedUser,
     db: Db,
+    budget: LLMRequestBudget,
     service: NoteServiceDependency,
 ) -> NoteView:
     note = await _execute(

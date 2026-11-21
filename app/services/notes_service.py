@@ -159,6 +159,8 @@ class NoteService:
         self, db: AsyncSession, user_id: UUID, note_id: UUID
     ) -> NoteResult:
         note = await self._owned_note(db, user_id, note_id, lock=True)
+        if note.processing_status in {"queued", "processing"}:
+            return self._result(note)
         note.processing_generation += 1
         note.processing_status = "queued"
         self._enqueue(db, note)

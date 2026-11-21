@@ -1,9 +1,12 @@
 """Password, email-token, and access-token helpers."""
 
+import asyncio
 import hashlib
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from threading import BoundedSemaphore
 from uuid import UUID
 
 import jwt
@@ -19,6 +22,29 @@ REFRESH_TOKEN_TTL = timedelta(days=30)
 _PUBLIC_JWT_PLACEHOLDERS = {
     "replace-with-a-random-secret-at-least-32-characters",
 }
+_PASSWORD_SLOTS = BoundedSemaphore(4)
+
+
+class PasswordWorkBusy(Exception):
+    pass
+
+
+async def run_password_work(operation: Callable, *args):
+    if not _PASSWORD_SLOTS.acquire(blocking=False):
+        raise PasswordWorkBusy
+
+    def work():
+        try:
+            return operation(*args)
+        finally:
+            _PASSWORD_SLOTS.release()
+
+    try:
+        future = asyncio.get_running_loop().run_in_executor(None, work)
+    except BaseException:
+        _PASSWORD_SLOTS.release()
+        raise
+    return await asyncio.shield(future)
 
 
 def validate_jwt_secret(secret: str) -> str:

@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.content_limits import validate_note_size
+
 
 class NoteCreate(BaseModel):
     content: str = Field(min_length=1)
@@ -16,7 +18,7 @@ class NoteCreate(BaseModel):
         content = value.strip()
         if not content:
             raise ValueError("Note content cannot be blank")
-        return content
+        return validate_note_size(content)
 
     @field_validator("title")
     @classmethod
@@ -39,7 +41,7 @@ class NoteUpdate(BaseModel):
         content = value.strip()
         if not content:
             raise ValueError("Note content cannot be blank")
-        return content
+        return validate_note_size(content)
 
     @field_validator("title")
     @classmethod
@@ -69,7 +71,7 @@ class ProposalUpdate(ProposalAction):
         proposal = value.strip()
         if not proposal:
             raise ValueError("Refinement proposal cannot be blank")
-        return proposal
+        return validate_note_size(proposal)
 
 
 class NoteView(BaseModel):
