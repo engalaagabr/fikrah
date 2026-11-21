@@ -46,6 +46,8 @@ Application services own API workflow rules, user/project scoping, and transacti
 
 Qdrant returns candidate note identifiers and indexed revisions. `app/rag/retriever.py` validates each candidate against PostgreSQL for the authenticated user, selected project, completed state, and current revision before returning it. PostgreSQL remains authoritative.
 
+PostgreSQL also enforces project ownership consistency: notes and conversations reference `projects(id, user_id)` through composite foreign keys. Services retain their authorization filters; these constraints protect writes and do not provide row-level read authorization. See [project ownership integrity](../features/tenant-integrity-constraints/project-ownership-integrity.md) for migration validation and deployment limits.
+
 ## Feature ownership
 
 - Authentication routes and schemas live in `app/api/v1/auth.py` and `app/schemas/auth.py`; workflows/errors/ports live in `app/services/`, and shared commands/results in `app/contracts/`.
