@@ -103,8 +103,9 @@ legacy sessions; existing users must sign in again after this upgrade.
   liveness and CRUD checks do not establish working processing, search, or RAG.
 
 Never print passwords, action links, API keys, or session tokens in a verification
-report. Do not change `.env` or reuse another project's database/vector containers
-to make a check pass.
+report. Only update local credentials when the user authorizes it; do not weaken
+configuration or reuse another project's database/vector containers to make a
+check pass.
 
 ## Verification on 2026-11-21
 
@@ -121,14 +122,23 @@ to make a check pass.
   The worker was stopped during note CRUD, then restarted after those notes were
   deleted, to avoid paid generation retries with missing embedding credentials.
   Its vector cleanup task completed successfully afterward.
+- After the user supplied embedding credentials, verified a real Gemini embedding
+  with 768 dimensions and recreated the API and worker with the local setting.
+  All 28 checks in `scripts/smoke_api.py` with `--with-llm` passed, including
+  processing, semantic search, and chat.
+- Additional live assertions verified generated titles, concepts and refinement
+  proposals while preserving original content; a shared-concept graph edge
+  between two notes; retrieval of the relevant note; a supported chat answer
+  containing the known fact and correct citation; refusal without citations for
+  an unsupported question; and persistence of both exchanges in conversation
+  history. These checks used synthetic content and real provider calls.
 - Passed 174 automated tests with isolated PostgreSQL and Redis, Ruff, API startup,
   offline Alembic metadata/SQL generation, and Celery task registration.
 - Removed the synthetic test account and its dependent data. Kept the pre-existing
   account, named volumes, and unrelated Compose projects intact.
 
-**Not verified:** successful live note processing, semantic retrieval, and grounded
-chat. `GEMINI_API_KEY` was absent, and the search endpoint returned the documented
-`503` instead of claiming a successful result. No text-generation provider was
-called during these checks. Add embedding credentials locally, recreate the API
-and worker so they load them, and run the smoke script with `--with-llm` before
-calling these features operational.
+The initial missing-credentials run returned the documented search `503`. The
+subsequent authenticated provider checks passed; this is evidence for the local
+synthetic workflows above, not a load test, outage-recovery test, or evaluation of
+answer quality across arbitrary user content. Credentials remain local and
+untracked.

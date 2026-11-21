@@ -1,4 +1,4 @@
-"""Bound JSON request buffering before authentication and body parsing."""
+"""Bound request buffering before authentication and body parsing."""
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -7,14 +7,23 @@ from app.core.config import get_settings
 
 
 class RequestBodyLimitMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, audio_upload_path: str | None = None) -> None:
         self.app = app
+        self.audio_upload_path = audio_upload_path
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        limit = get_settings().fikrah_request_max_bytes
+        settings = get_settings()
+        limit = settings.fikrah_request_max_bytes
+        if (
+            self.audio_upload_path is not None
+            and scope.get("method") == "POST"
+            and scope.get("path", "").rstrip("/") == self.audio_upload_path
+        ):
+            # Allow bounded multipart headers alongside the separately bounded file.
+            limit = settings.fikrah_transcription_max_bytes + 65_536
         headers = dict(scope.get("headers", []))
         length = headers.get(b"content-length")
         if length is not None:

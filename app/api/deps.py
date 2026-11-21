@@ -18,6 +18,7 @@ from app.services.notes_service import NoteService
 from app.services.projects_service import ProjectService
 from app.services.request_budgets import RequestBudgetExceeded, RequestBudgetUnavailable
 from app.services.search_service import SemanticSearchService
+from app.services.transcription_service import TranscriptionService
 
 bearer = HTTPBearer(auto_error=False)
 Db = Annotated[AsyncSession, Depends(get_db_session)]
@@ -111,6 +112,12 @@ def get_search_service() -> SemanticSearchService:
     return search_service
 
 
+def get_transcription_service() -> TranscriptionService:
+    from app.infrastructure.container import transcription_service
+
+    return transcription_service
+
+
 AuthServiceDependency = Annotated[AuthService, Depends(get_auth_service)]
 ChatServiceDependency = Annotated[ChatService, Depends(get_chat_service)]
 ConnectionServiceDependency = Annotated[
@@ -119,3 +126,6 @@ ConnectionServiceDependency = Annotated[
 NoteServiceDependency = Annotated[NoteService, Depends(get_note_service)]
 ProjectServiceDependency = Annotated[ProjectService, Depends(get_project_service)]
 SearchServiceDependency = Annotated[SemanticSearchService, Depends(get_search_service)]
+TranscriptionServiceDependency = Annotated[
+    TranscriptionService, Depends(get_transcription_service)
+]

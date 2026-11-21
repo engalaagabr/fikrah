@@ -24,11 +24,12 @@ After a note is saved or edited, the Backend starts durable asynchronous LLM pro
 
 ## Content Processing Boundary
 
-- The mobile application extracts text locally from voice recordings and PDF documents.
+- Voice recordings can optionally be sent to `POST /v1/transcriptions` for backend transcription with Gemini `gemini-3.5-transcribe` in SMART mode. The endpoint returns text only; the mobile user reviews and saves it separately as a note.
+- The mobile application handles PDF documents locally.
 - Original PDF files remain on the device as-is.
-- The Backend and LLM services receive text only, regardless of whether it was typed directly or extracted locally from audio or a PDF.
+- Note-management endpoints receive text only, whether typed, transcribed, or extracted locally from a PDF. The separate transcription endpoint accepts recorded audio without creating a note.
 - The LLM and Backend layers process and store the received text.
-- Server-side speech-to-text, PDF text extraction, and OCR are not required.
+- Server-side speech-to-text is now supported as an optional capture capability. Server-side PDF extraction and OCR are not required.
 - Mobile application development and UI implementation are outside this work's responsibility.
 
 ## Account and Data Isolation

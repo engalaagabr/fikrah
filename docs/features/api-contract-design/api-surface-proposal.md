@@ -6,7 +6,7 @@
 
 - All endpoints except account registration, login, Google sign-in, token refresh, email verification, and password-reset requests/completion require an authenticated user.
 - Every database and vector lookup is scoped to the authenticated user's data. The client does not choose or submit an owner ID.
-- Note content sent to the Backend is plain text. The mobile app extracts voice and PDF text locally, and original PDFs remain on-device. There is no file upload or server-side extraction endpoint in this proposal.
+- Note content sent to note endpoints is plain text. Voice recordings may first use the separate `POST /v1/transcriptions` endpoint (Gemini SMART transcription, text-only response). Original PDFs remain on-device; no server-side PDF extraction is provided.
 - Project-scoped operations verify that the selected project belongs to the authenticated user. `General` is the default project and cannot be deleted.
 - Deleting a project removes its notes; deleting a note or project also removes associated knowledge links and schedules durable Qdrant cleanup.
 - Suggested refinement text is a proposal. Accepting replaces the current note text permanently; rejecting removes the proposal. A user can request another proposal.
