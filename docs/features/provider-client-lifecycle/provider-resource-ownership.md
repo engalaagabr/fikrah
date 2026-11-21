@@ -11,7 +11,9 @@ For async workflows the entire scope must run inside `asyncio.to_thread`. Cancel
 ## Rollout
 
 - Explicit adapter cleanup and a shared ownership helper are implemented.
-- Worker analysis/embeddings, search retrieval, and chat generation are being migrated to this ownership scope.
+- Worker analysis and embeddings each close their client before vector/database completion. If analysis fails, no embedding client is created.
+- Search creates, uses, and closes its embedding model inside one background thread, before querying Qdrant or validating PostgreSQL results.
+- Chat generation is being migrated to this ownership scope.
 - Qdrant already closes its clients in `finally`; its locking/consistency policy is unchanged.
 
 ## Verification

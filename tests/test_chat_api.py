@@ -109,6 +109,9 @@ async def chat_api(
 
 
 class FakeEmbeddingModel:
+    def close(self) -> None:
+        pass
+
     def embed_query(self, query: str) -> list[float]:
         return [0.1, 0.2]
 
